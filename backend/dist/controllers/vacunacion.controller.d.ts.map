@@ -1,0 +1,1 @@
+{"version":3,"file":"vacunacion.controller.d.ts","sourceRoot":"","sources":["../../src/controllers/vacunacion.controller.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,OAAO,EAAE,QAAQ,EAAE,MAAM,SAAS,CAAC;AAO5C,eAAO,MAAM,oBAAoB;iBACZ,OAAO,OAAO,QAAQ;eAaxB,OAAO,OAAO,QAAQ;gBAqBrB,OAAO,OAAO,QAAQ;gBAgCtB,OAAO,OAAO,QAAQ;gBAwBtB,OAAO,OAAO,QAAQ;CAUzC,CAAC"}

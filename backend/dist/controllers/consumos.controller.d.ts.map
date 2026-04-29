@@ -1,0 +1,1 @@
+{"version":3,"file":"consumos.controller.d.ts","sourceRoot":"","sources":["../../src/controllers/consumos.controller.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,OAAO,EAAE,QAAQ,EAAE,MAAM,SAAS,CAAC;AAyB5C,eAAO,MAAM,kBAAkB;eACZ,OAAO,OAAO,QAAQ;iBA2BpB,OAAO,OAAO,QAAQ;iBAiBtB,OAAO,OAAO,QAAQ;mBAwDpB,OAAO,OAAO,QAAQ;gBA+EzB,OAAO,OAAO,QAAQ;CAgCzC,CAAC"}

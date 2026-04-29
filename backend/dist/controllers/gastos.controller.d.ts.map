@@ -1,0 +1,1 @@
+{"version":3,"file":"gastos.controller.d.ts","sourceRoot":"","sources":["../../src/controllers/gastos.controller.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,OAAO,EAAE,QAAQ,EAAE,MAAM,SAAS,CAAC;AAO5C,eAAO,MAAM,gBAAgB;eACV,OAAO,OAAO,QAAQ;cAuBvB,OAAO,OAAO,QAAQ;gBAWpB,OAAO,OAAO,QAAQ;gBA+BtB,OAAO,OAAO,QAAQ;gBAiCtB,OAAO,OAAO,QAAQ;CAUzC,CAAC"}

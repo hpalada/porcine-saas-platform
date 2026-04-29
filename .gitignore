@@ -4,10 +4,10 @@ node_modules/
 .pnp.js
 
 # Build outputs
-dist/
 build/
 .next/
 out/
+# dist/ tracked for Railway (pre-compiled)
 
 # Logs
 logs
