@@ -43,7 +43,7 @@ export default function InventarioPage() {
     } catch (error: any) { alert(error.message); }
   };
 
-  const getStockVariant = (s: number) => s < 30 ? 'danger' : s < 50 ? 'cancelado' : 'active';
+  const getStockVariant = (s: number) => s < 10 ? 'danger' : s < 20 ? 'cancelado' : 'active';
 
   return (
     <div className="space-y-5">

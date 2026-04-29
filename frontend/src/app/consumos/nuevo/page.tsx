@@ -93,15 +93,15 @@ export default function NuevoConsumoPage() {
 
           {stockDisponible !== null && (
             <div className={`flex items-center justify-between p-3 rounded-lg border text-sm ${
-              stockDisponible < 30
+              stockDisponible < 10
                 ? 'bg-red-900/15 border-red-800 text-red-400'
-                : stockDisponible < 50
+                : stockDisponible < 20
                 ? 'bg-yellow-900/15 border-yellow-800 text-yellow-400'
                 : 'bg-green-900/15 border-green-800 text-green-400'
             }`}>
               <span>Stock disponible</span>
               <div className="flex items-center gap-1.5 font-medium">
-                {stockDisponible < 50 ? <IconAlertCircle size={14} /> : <IconCheckCircle size={14} />}
+                {stockDisponible < 20 ? <IconAlertCircle size={14} /> : <IconCheckCircle size={14} />}
                 {stockDisponible} {concentradoSel?.unidad || 'unidades'}
               </div>
             </div>

@@ -10,8 +10,8 @@ import { Modal } from '@/components/ui/Modal';
 import { Badge } from '@/components/ui/Badge';
 import { Table, TableHeader, TableBody, TableRow, TableCell, TableHead } from '@/components/ui/Table';
 import { api } from '@/lib/api-client';
-import { formatNumber, formatDate } from '@/lib/utils';
-import { IconPackage, IconPlus, IconEdit, IconTrash, IconNote, IconSyringe, IconCalendar, IconClock } from '@/components/icons';
+import { formatNumber, formatDate, formatCurrency } from '@/lib/utils';
+import { IconPackage, IconPlus, IconEdit, IconTrash, IconNote, IconSyringe, IconCalendar, IconClock, IconWheat, IconAlertCircle, IconCheckCircle } from '@/components/icons';
 
 const TIPOS_NOTA = [
   { value: 'vacunacion', label: 'Vacunación' },
@@ -35,8 +35,10 @@ export default function LotesPage() {
   const [tab, setTab] = useState<'activos' | 'finalizados'>('activos');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isNotasModalOpen, setIsNotasModalOpen] = useState(false);
+  const [isConcentradoModalOpen, setIsConcentradoModalOpen] = useState(false);
   const [editingLote, setEditingLote] = useState<any>(null);
   const [selectedLote, setSelectedLote] = useState<any>(null);
+  const [selectedLoteConcentrado, setSelectedLoteConcentrado] = useState<any>(null);
 
   const [formData, setFormData] = useState({
     nombre: '',
@@ -54,15 +56,38 @@ export default function LotesPage() {
     fecha: new Date().toISOString().split('T')[0],
   });
 
+  const [consumoForm, setConsumoForm] = useState({
+    concentradoTipoId: '',
+    cantidad: '',
+    fecha: new Date().toISOString().split('T')[0],
+  });
+  const [consumoLoading, setConsumoLoading] = useState(false);
+
   const { data: lotes = [], mutate } = useSWR('/api/lotes', () => api.lotes.list());
   const { data: notas = [], mutate: mutateNotas } = useSWR(
     selectedLote ? `/api/notas/lote/${selectedLote._id}` : null,
     () => selectedLote ? api.notas.porLote(selectedLote._id) : null
   );
+  const { data: consumosLote = [], mutate: mutateConsumos } = useSWR(
+    selectedLoteConcentrado ? `/api/consumos/lote/${selectedLoteConcentrado._id}` : null,
+    () => selectedLoteConcentrado ? api.consumos.porLote(selectedLoteConcentrado._id) : null
+  );
+  const { data: concentradosTipos = [] } = useSWR('/api/concentrados', () => api.concentrados.list());
+  const { data: inventarioStock = [] } = useSWR('/api/inventario', () => api.inventario.stockActual());
 
   const lotesActivos = (lotes as any[]).filter((l) => l.estado === 'activo');
   const lotesFinalizados = (lotes as any[]).filter((l) => l.estado === 'finalizado');
   const lotesFiltrados = tab === 'activos' ? lotesActivos : lotesFinalizados;
+
+  // Concentrado modal derived values
+  const concentradoSel = (concentradosTipos as any[]).find((c: any) => c._id === consumoForm.concentradoTipoId);
+  const stockDisponible = consumoForm.concentradoTipoId
+    ? ((inventarioStock as any[]).find((i: any) => i._id === consumoForm.concentradoTipoId)?.stock ?? 0)
+    : null;
+  const cantidadNum = parseFloat(consumoForm.cantidad) || 0;
+  const costoEstimado = concentradoSel ? cantidadNum * concentradoSel.precioActual : 0;
+  const totalConsumos = (consumosLote as any[]).reduce((a: number, c: any) => a + c.costoTotal, 0);
+  const totalSacos = (consumosLote as any[]).reduce((a: number, c: any) => a + c.cantidad, 0);
 
   const openModal = (lote?: any) => {
     if (lote) {
@@ -130,6 +155,12 @@ export default function LotesPage() {
     setIsNotasModalOpen(true);
   };
 
+  const openConcentrado = (lote: any) => {
+    setSelectedLoteConcentrado(lote);
+    setConsumoForm({ concentradoTipoId: '', cantidad: '', fecha: new Date().toISOString().split('T')[0] });
+    setIsConcentradoModalOpen(true);
+  };
+
   const handleCrearNota = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedLote) return;
@@ -148,6 +179,35 @@ export default function LotesPage() {
       mutateNotas();
     } catch (error: any) {
       alert(error.message || 'Error al eliminar nota');
+    }
+  };
+
+  const handleRegistrarConsumo = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedLoteConcentrado) return;
+    setConsumoLoading(true);
+    try {
+      await api.consumos.create({
+        loteId: selectedLoteConcentrado._id,
+        concentradoTipoId: consumoForm.concentradoTipoId,
+        cantidad: cantidadNum,
+        fecha: consumoForm.fecha,
+      });
+      mutateConsumos();
+      setConsumoForm({ concentradoTipoId: '', cantidad: '', fecha: new Date().toISOString().split('T')[0] });
+    } catch (error: any) {
+      alert(error.message || 'Error al registrar consumo');
+    }
+    setConsumoLoading(false);
+  };
+
+  const handleEliminarConsumo = async (id: string) => {
+    if (!confirm('¿Eliminar este registro de consumo?')) return;
+    try {
+      await api.consumos.delete(id);
+      mutateConsumos();
+    } catch (error: any) {
+      alert(error.message || 'Error al eliminar');
     }
   };
 
@@ -250,6 +310,9 @@ export default function LotesPage() {
                   </TableCell>
                   <TableCell align="right">
                     <div className="flex items-center justify-end gap-1.5">
+                      <Button variant="ghost" size="sm" onClick={() => openConcentrado(lote)} title="Concentrado">
+                        <IconWheat size={14} className="text-yellow-500" />
+                      </Button>
                       <Button variant="ghost" size="sm" onClick={() => openNotas(lote)} title="Notas">
                         <IconNote size={14} />
                       </Button>
@@ -349,7 +412,6 @@ export default function LotesPage() {
       {/* Modal Notas */}
       <Modal isOpen={isNotasModalOpen} onClose={() => setIsNotasModalOpen(false)} title={`Notas — ${selectedLote?.nombre}`} size="lg">
         <div className="space-y-5">
-          {/* Formulario nueva nota */}
           <div className="bg-zinc-800/40 rounded-xl p-4 border border-zinc-700/50">
             <h3 className="text-sm font-medium text-zinc-300 mb-3 flex items-center gap-2">
               <IconSyringe size={14} className="text-green-400" />
@@ -388,7 +450,6 @@ export default function LotesPage() {
             </form>
           </div>
 
-          {/* Lista de notas */}
           <div className="space-y-2">
             <h3 className="text-sm font-medium text-zinc-400">Historial de Notas</h3>
             {(notas as any[]).length > 0 ? (
@@ -411,6 +472,122 @@ export default function LotesPage() {
               ))
             ) : (
               <p className="text-zinc-500 text-sm text-center py-6">No hay notas registradas para este lote</p>
+            )}
+          </div>
+        </div>
+      </Modal>
+
+      {/* Modal Concentrados por Lote */}
+      <Modal isOpen={isConcentradoModalOpen} onClose={() => setIsConcentradoModalOpen(false)} title={`Concentrado — ${selectedLoteConcentrado?.nombre}`} size="lg">
+        <div className="space-y-5">
+          {/* Resumen */}
+          {(consumosLote as any[]).length > 0 && (
+            <div className="grid grid-cols-2 gap-3">
+              <div className="bg-zinc-800/50 rounded-lg p-3 text-center">
+                <p className="text-xs text-zinc-500 uppercase tracking-wide mb-1">Total Consumido</p>
+                <p className="text-lg font-bold text-white">{formatNumber(totalSacos)} <span className="text-xs font-normal text-zinc-400">uds</span></p>
+              </div>
+              <div className="bg-zinc-800/50 rounded-lg p-3 text-center">
+                <p className="text-xs text-zinc-500 uppercase tracking-wide mb-1">Costo Total</p>
+                <p className="text-lg font-bold text-red-400">{formatCurrency(totalConsumos)}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Formulario nuevo consumo */}
+          <div className="bg-zinc-800/40 rounded-xl p-4 border border-zinc-700/50">
+            <h3 className="text-sm font-medium text-zinc-300 mb-3 flex items-center gap-2">
+              <IconWheat size={14} className="text-yellow-400" />
+              Registrar Consumo
+            </h3>
+            <form onSubmit={handleRegistrarConsumo} className="space-y-3">
+              <Select
+                label="Tipo de Concentrado"
+                value={consumoForm.concentradoTipoId}
+                onChange={(e) => setConsumoForm({ ...consumoForm, concentradoTipoId: e.target.value, cantidad: '' })}
+                required
+              >
+                <option value="">Seleccionar concentrado...</option>
+                {(concentradosTipos as any[]).map((c: any) => (
+                  <option key={c._id} value={c._id}>{c.nombre} — {formatCurrency(c.precioActual)}/{c.unidad}</option>
+                ))}
+              </Select>
+
+              {stockDisponible !== null && (
+                <div className={`flex items-center justify-between p-2.5 rounded-lg border text-xs ${
+                  stockDisponible < 10
+                    ? 'bg-red-900/15 border-red-800 text-red-400'
+                    : stockDisponible < 20
+                    ? 'bg-yellow-900/15 border-yellow-800 text-yellow-400'
+                    : 'bg-green-900/15 border-green-800 text-green-400'
+                }`}>
+                  <span>Stock disponible en granja</span>
+                  <div className="flex items-center gap-1 font-medium">
+                    {stockDisponible < 20 ? <IconAlertCircle size={12} /> : <IconCheckCircle size={12} />}
+                    {stockDisponible} {concentradoSel?.unidad || 'uds'}
+                  </div>
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-3">
+                <Input
+                  label={`Cantidad (${concentradoSel?.unidad || 'uds'})`}
+                  type="number"
+                  value={consumoForm.cantidad}
+                  onChange={(e) => setConsumoForm({ ...consumoForm, cantidad: e.target.value })}
+                  placeholder="0"
+                  min="0.1"
+                  step="0.1"
+                  required
+                />
+                <Input
+                  label="Fecha"
+                  type="date"
+                  value={consumoForm.fecha}
+                  onChange={(e) => setConsumoForm({ ...consumoForm, fecha: e.target.value })}
+                  required
+                />
+              </div>
+
+              {costoEstimado > 0 && (
+                <div className="flex items-center justify-between p-3 bg-green-900/10 border border-green-900/30 rounded-lg">
+                  <p className="text-xs text-green-300">Costo estimado</p>
+                  <p className="text-base font-bold text-green-400">{formatCurrency(costoEstimado)}</p>
+                </div>
+              )}
+
+              <Button type="submit" size="sm" disabled={consumoLoading} className="flex items-center gap-2">
+                <IconPlus size={13} />
+                {consumoLoading ? 'Registrando...' : 'Agregar Consumo'}
+              </Button>
+            </form>
+          </div>
+
+          {/* Historial de consumos del lote */}
+          <div className="space-y-2">
+            <h3 className="text-sm font-medium text-zinc-400">Historial de Consumos</h3>
+            {(consumosLote as any[]).length > 0 ? (
+              <div className="space-y-1.5">
+                {(consumosLote as any[]).map((c: any) => (
+                  <div key={c._id} className="flex items-center justify-between p-3 bg-zinc-800/40 rounded-lg border border-zinc-700/30">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-white font-medium">{(c.concentradoTipoId as any)?.nombre || '—'}</p>
+                      <p className="text-xs text-zinc-500 mt-0.5">{formatDate(c.fecha)} · {formatNumber(c.cantidad)} {(c.concentradoTipoId as any)?.unidad || 'uds'}</p>
+                    </div>
+                    <div className="flex items-center gap-3 ml-3">
+                      <span className="text-sm font-medium text-red-400">{formatCurrency(c.costoTotal)}</span>
+                      <button
+                        onClick={() => handleEliminarConsumo(c._id)}
+                        className="text-zinc-600 hover:text-red-400 transition-colors"
+                      >
+                        <IconTrash size={13} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-zinc-500 text-sm text-center py-6">No hay consumos registrados para este lote</p>
             )}
           </div>
         </div>

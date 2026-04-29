@@ -27,7 +27,7 @@ export default function Dashboard() {
 
   const lotesActivos = (lotes as any[]).filter((l) => l.estado === 'activo');
   const lotesFinalizados = (lotes as any[]).filter((l) => l.estado === 'finalizado');
-  const stockBajo = (inventario as any[]).filter((i) => i.stock < 50);
+  const stockBajo = (inventario as any[]).filter((i) => i.stock < 10);
   const totalAnimales = lotesActivos.reduce((acc: number, l: any) => acc + (l.cantidadActual || 0), 0);
 
   return (
