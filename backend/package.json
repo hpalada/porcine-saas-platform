@@ -1,0 +1,39 @@
+{
+  "name": "porcine-backend",
+  "version": "1.0.0",
+  "description": "Backend API para sistema de gestión porcina",
+  "main": "dist/server.js",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "seed": "tsx src/utils/seed.ts",
+    "fix-subs": "tsx src/scripts/fix-suscripciones.ts",
+    "fix-data": "tsx src/scripts/fix-empresaid.ts",
+    "test:smtp": "tsx test-smtp.ts"
+  },
+  "dependencies": {
+    "@types/nodemailer": "^8.0.0",
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "exceljs": "^4.4.0",
+    "express": "^4.19.2",
+    "express-rate-limit": "^7.4.0",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.4.1",
+    "nodemailer": "^8.0.6",
+    "pdfkit": "^0.18.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/node": "^20.12.12",
+    "@types/pdfkit": "^0.17.6",
+    "tsx": "^4.11.0",
+    "typescript": "^5.4.5"
+  }
+}

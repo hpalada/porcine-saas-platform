@@ -1,0 +1,810 @@
+import { Request, Response } from 'express';
+import mongoose from 'mongoose';
+import ExcelJS from 'exceljs';
+import PDFDocument from 'pdfkit';
+import ConsumoRegistro from '../models/ConsumoRegistro';
+import GastoAdicional from '../models/GastoAdicional';
+import VentaRegistro from '../models/VentaRegistro';
+import { Lote } from '../models/Lote';
+import { Empresa } from '../models/Empresa';
+
+const CATEGORIAS_LABEL: Record<string, string> = {
+  lechon: 'Precio Lechón', trabajador: 'Trabajadores', medicina: 'Medicina',
+  transporte: 'Transporte', mano_obra: 'Mano de Obra', servicios: 'Servicios', otro: 'Otro',
+};
+
+const fmtMoney = (n: number) => `L ${(n || 0).toLocaleString('es-HN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const fmtDate = (d: Date | undefined) => d ? new Date(d).toLocaleDateString('es-HN', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '';
+const sanitizeFile = (s: string) => s.replace(/[^\w\d-]+/g, '_').slice(0, 60);
+
+const getEmpresaId = (req: Request) => (req as any).empresaId || req.query.empresaId;
+
+export const reportesController = {
+  async rentabilidad(req: Request, res: Response) {
+    try {
+      const empresaId = getEmpresaId(req);
+      if (!empresaId) return res.status(400).json({ error: 'empresaId requerido' });
+      const empresaOid = new mongoose.Types.ObjectId(empresaId as string);
+      const loteId = new mongoose.Types.ObjectId(req.params.loteId);
+
+      const lote = await Lote.findOne({ _id: loteId, empresaId });
+      if (!lote) return res.status(404).json({ error: 'Lote no encontrado' });
+
+      const [consumos, gastosPorCategoria, gastosTotales, ventas] = await Promise.all([
+        ConsumoRegistro.aggregate([
+          { $match: { loteId, empresaId: empresaOid } },
+          { $group: { _id: null, totalCostos: { $sum: '$costoTotal' }, cantidadTotal: { $sum: '$cantidad' } } },
+        ]),
+        GastoAdicional.aggregate([
+          { $match: { loteId, empresaId: empresaOid } },
+          { $group: { _id: '$categoria', total: { $sum: '$monto' } } },
+        ]),
+        GastoAdicional.aggregate([
+          { $match: { loteId, empresaId: empresaOid } },
+          { $group: { _id: null, total: { $sum: '$monto' } } },
+        ]),
+        VentaRegistro.aggregate([
+          { $match: { loteId, empresaId: empresaOid } },
+          { $group: { _id: null, totalIngresos: { $sum: '$ingresoTotal' }, totalCerdos: { $sum: '$cantidadCerdos' }, totalPeso: { $sum: '$pesoTotalKg' } } },
+        ]),
+      ]);
+
+      const costosConcentrado = consumos[0]?.totalCostos || 0;
+      const cantidadConcentrado = consumos[0]?.cantidadTotal || 0;
+      const otrosGastos = gastosTotales[0]?.total || 0;
+      const ingresos = ventas[0]?.totalIngresos || 0;
+      const cerdosVendidos = ventas[0]?.totalCerdos || 0;
+      const pesoVendido = ventas[0]?.totalPeso || 0;
+      const costosTotales = costosConcentrado + otrosGastos;
+      const utilidad = ingresos - costosTotales;
+      const margen = ingresos > 0 ? (utilidad / ingresos) * 100 : 0;
+      const costoPorCerdo = lote.cantidadInicial > 0 ? costosTotales / lote.cantidadInicial : 0;
+      const costoPorKg = pesoVendido > 0 ? costosTotales / pesoVendido : 0;
+
+      res.json({
+        lote: {
+          _id: lote._id,
+          nombre: lote.nombre,
+          cantidadInicial: lote.cantidadInicial,
+          cantidadActual: lote.cantidadActual,
+          cantidadSalida: lote.cantidadSalida,
+          fechaIngreso: lote.fechaIngreso,
+          estado: lote.estado,
+        },
+        ingresos: {
+          total: ingresos,
+          cerdosVendidos,
+          pesoTotal: pesoVendido,
+          precioPromedio: pesoVendido > 0 ? ingresos / pesoVendido : 0,
+        },
+        costos: {
+          concentrado: { total: costosConcentrado, cantidad: cantidadConcentrado },
+          otrosGastos: {
+            total: otrosGastos,
+            porCategoria: Object.fromEntries(gastosPorCategoria.map((g: any) => [g._id, g.total])),
+          },
+          totales: costosTotales,
+        },
+        resultado: {
+          utilidad,
+          margen: Math.round(margen * 100) / 100,
+          estado: utilidad > 0 ? 'rentable' : utilidad < 0 ? 'perdida' : 'equilibrio',
+        },
+        indicadores: {
+          costoPorCerdo: Math.round(costoPorCerdo * 100) / 100,
+          costoPorKg: Math.round(costoPorKg * 100) / 100,
+          cerdosActuales: lote.cantidadActual,
+        },
+      });
+    } catch (error) {
+      res.status(500).json({ error: 'Error al calcular rentabilidad', message: error instanceof Error ? error.message : undefined });
+    }
+  },
+
+  async dashboard(req: Request, res: Response) {
+    try {
+      const empresaId = getEmpresaId(req);
+      if (!empresaId) return res.status(400).json({ error: 'empresaId requerido' });
+      const empresaOid = new mongoose.Types.ObjectId(empresaId as string);
+      const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+
+      const [lotesActivos, totalAnimales, costosDelMes, costosConcentradoDelMes, ingresosDelMes] = await Promise.all([
+        Lote.countDocuments({ empresaId, estado: 'activo' }),
+        Lote.aggregate([
+          { $match: { empresaId: empresaOid, estado: 'activo' } },
+          { $group: { _id: null, total: { $sum: '$cantidadActual' } } },
+        ]),
+        GastoAdicional.aggregate([
+          { $match: { empresaId: empresaOid, fecha: { $gte: startOfMonth } } },
+          { $group: { _id: null, total: { $sum: '$monto' } } },
+        ]),
+        ConsumoRegistro.aggregate([
+          { $match: { empresaId: empresaOid, fecha: { $gte: startOfMonth } } },
+          { $group: { _id: null, total: { $sum: '$costoTotal' } } },
+        ]),
+        VentaRegistro.aggregate([
+          { $match: { empresaId: empresaOid, fechaVenta: { $gte: startOfMonth } } },
+          { $group: { _id: null, total: { $sum: '$ingresoTotal' } } },
+        ]),
+      ]);
+
+      const totalCostos = (costosDelMes[0]?.total || 0) + (costosConcentradoDelMes[0]?.total || 0);
+
+      res.json({
+        lotesActivos,
+        totalAnimalesActivos: totalAnimales[0]?.total || 0,
+        costosDelMes: totalCostos,
+        ingresosDelMes: ingresosDelMes[0]?.total || 0,
+        utilidadDelMes: (ingresosDelMes[0]?.total || 0) - totalCostos,
+      });
+    } catch (error) {
+      res.status(500).json({ error: 'Error al obtener dashboard' });
+    }
+  },
+
+  async consumoDiario(req: Request, res: Response) {
+    try {
+      const empresaId = getEmpresaId(req);
+      if (!empresaId) return res.status(400).json({ error: 'empresaId requerido' });
+      const empresaOid = new mongoose.Types.ObjectId(empresaId as string);
+      const { fechaDesde, fechaHasta, concentradoTipoId } = req.query;
+
+      const matchQuery: Record<string, any> = { empresaId: empresaOid };
+      if (fechaDesde || fechaHasta) {
+        matchQuery.fecha = {};
+        if (fechaDesde) matchQuery.fecha.$gte = new Date(fechaDesde as string);
+        if (fechaHasta) matchQuery.fecha.$lte = new Date(fechaHasta as string);
+      }
+      if (concentradoTipoId) matchQuery.concentradoTipoId = new mongoose.Types.ObjectId(concentradoTipoId as string);
+
+      const consumoPorDia = await ConsumoRegistro.aggregate([
+        { $match: matchQuery },
+        { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$fecha' } }, cantidadTotal: { $sum: '$cantidad' }, costoTotal: { $sum: '$costoTotal' }, registros: { $sum: 1 } } },
+        { $sort: { _id: 1 } },
+      ]);
+
+      res.json(consumoPorDia);
+    } catch (error) {
+      res.status(500).json({ error: 'Error al obtener consumo diario' });
+    }
+  },
+
+  async costoAcumulado(req: Request, res: Response) {
+    try {
+      const empresaId = getEmpresaId(req);
+      if (!empresaId) return res.status(400).json({ error: 'empresaId requerido' });
+      const empresaOid = new mongoose.Types.ObjectId(empresaId as string);
+      const loteId = new mongoose.Types.ObjectId(req.params.loteId);
+
+      const lote = await Lote.findOne({ _id: loteId, empresaId });
+      if (!lote) return res.status(404).json({ error: 'Lote no encontrado' });
+
+      const costoAcumulado = await ConsumoRegistro.aggregate([
+        { $match: { loteId, empresaId: empresaOid } },
+        { $sort: { fecha: 1 } },
+        { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$fecha' } }, diario: { $sum: '$costoTotal' }, cantidadDiaria: { $sum: '$cantidad' } } },
+        { $sort: { _id: 1 } },
+      ]);
+
+      let acumulado = 0;
+      const resultado = costoAcumulado.map((r: any) => {
+        acumulado += r.diario;
+        return { fecha: r._id, diario: r.diario, cantidad: r.cantidadDiaria, acumulado: Math.round(acumulado * 100) / 100 };
+      });
+
+      res.json(resultado);
+    } catch (error) {
+      res.status(500).json({ error: 'Error al calcular costo acumulado' });
+    }
+  },
+
+  async exportar(req: Request, res: Response) {
+    try {
+      const empresaId = getEmpresaId(req);
+      if (!empresaId) return res.status(400).json({ error: 'empresaId requerido' });
+      const loteId = new mongoose.Types.ObjectId(req.params.loteId);
+      const formato = (req.query.formato as string) || 'excel';
+
+      const lote = await Lote.findOne({ _id: loteId, empresaId });
+      if (!lote) return res.status(404).json({ error: 'Lote no encontrado' });
+
+      const empresa = await Empresa.findById(empresaId);
+      const empresaOid = new mongoose.Types.ObjectId(empresaId as string);
+
+      const [consumos, gastos, ventas, gastosPorCat] = await Promise.all([
+        ConsumoRegistro.find({ loteId, empresaId }).populate('concentradoTipoId', 'nombre').sort({ fecha: 1 }),
+        GastoAdicional.find({ loteId, empresaId }).sort({ fecha: 1 }),
+        VentaRegistro.find({ loteId, empresaId }).sort({ fechaVenta: 1 }),
+        GastoAdicional.aggregate([
+          { $match: { loteId, empresaId: empresaOid } },
+          { $group: { _id: '$categoria', total: { $sum: '$monto' } } },
+        ]),
+      ]);
+
+      const totalConsumo = consumos.reduce((s: number, c: any) => s + (c.costoTotal || 0), 0);
+      const totalGastos = gastos.reduce((s: number, g: any) => s + (g.monto || 0), 0);
+      const totalIngresos = ventas.reduce((s: number, v: any) => s + (v.ingresoTotal || 0), 0);
+      const totalCerdosVendidos = ventas.reduce((s: number, v: any) => s + (v.cantidadCerdos || 0), 0);
+      const totalPesoVendido = ventas.reduce((s: number, v: any) => s + (v.pesoTotalKg || 0), 0);
+      const totalCostos = totalConsumo + totalGastos;
+      const utilidad = totalIngresos - totalCostos;
+      const margen = totalIngresos > 0 ? (utilidad / totalIngresos) * 100 : 0;
+      const estado = utilidad > 0 ? 'RENTABLE' : utilidad < 0 ? 'PÉRDIDA' : 'EQUILIBRIO';
+
+      const baseFile = sanitizeFile(`${empresa?.nombre || 'reporte'}_${lote.nombre}`);
+
+      if (formato === 'excel' || formato === 'xlsx') {
+        const wb = new ExcelJS.Workbook();
+        wb.creator = 'Porcine SaaS';
+        wb.created = new Date();
+
+        // ============ HOJA 1: RESUMEN ============
+        const ws = wb.addWorksheet('Resumen', {
+          properties: { tabColor: { argb: 'FF16A34A' } },
+          views: [{ showGridLines: false }],
+        });
+
+        ws.columns = [
+          { width: 28 }, { width: 22 }, { width: 22 }, { width: 22 },
+        ];
+
+        // Header banner
+        ws.mergeCells('A1:D1');
+        const hCell = ws.getCell('A1');
+        hCell.value = (empresa?.nombre || 'Porcine SaaS').toUpperCase();
+        hCell.font = { name: 'Calibri', size: 22, bold: true, color: { argb: 'FFFFFFFF' } };
+        hCell.alignment = { vertical: 'middle', horizontal: 'center' };
+        hCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF15803D' } };
+        ws.getRow(1).height = 38;
+
+        ws.mergeCells('A2:D2');
+        const sCell = ws.getCell('A2');
+        sCell.value = `Reporte de rentabilidad — ${lote.nombre}`;
+        sCell.font = { name: 'Calibri', size: 13, bold: true, color: { argb: 'FFFFFFFF' } };
+        sCell.alignment = { vertical: 'middle', horizontal: 'center' };
+        sCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF22C55E' } };
+        ws.getRow(2).height = 24;
+
+        ws.mergeCells('A3:D3');
+        const dCell = ws.getCell('A3');
+        dCell.value = `Generado el ${fmtDate(new Date())}`;
+        dCell.font = { name: 'Calibri', size: 10, italic: true, color: { argb: 'FF6B7280' } };
+        dCell.alignment = { horizontal: 'center' };
+        ws.getRow(3).height = 18;
+
+        // Sección: Información del lote
+        const sectionHeader = (row: number, text: string) => {
+          ws.mergeCells(`A${row}:D${row}`);
+          const c = ws.getCell(`A${row}`);
+          c.value = text;
+          c.font = { bold: true, size: 12, color: { argb: 'FFFFFFFF' } };
+          c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF374151' } };
+          c.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
+          ws.getRow(row).height = 22;
+        };
+
+        const kvRow = (row: number, k1: string, v1: any, k2?: string, v2?: any) => {
+          const cellA = ws.getCell(`A${row}`); cellA.value = k1;
+          cellA.font = { bold: true, color: { argb: 'FF4B5563' }, size: 10 };
+          cellA.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF3F4F6' } };
+          cellA.border = { bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } } };
+          const cellB = ws.getCell(`B${row}`); cellB.value = v1;
+          cellB.font = { color: { argb: 'FF111827' }, size: 11 };
+          cellB.border = { bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } } };
+          if (k2 !== undefined) {
+            const cellC = ws.getCell(`C${row}`); cellC.value = k2;
+            cellC.font = { bold: true, color: { argb: 'FF4B5563' }, size: 10 };
+            cellC.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF3F4F6' } };
+            cellC.border = { bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } } };
+            const cellD = ws.getCell(`D${row}`); cellD.value = v2;
+            cellD.font = { color: { argb: 'FF111827' }, size: 11 };
+            cellD.border = { bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } } };
+          }
+        };
+
+        sectionHeader(5, 'INFORMACIÓN DEL LOTE');
+        kvRow(6, 'Nombre', lote.nombre, 'Estado', (lote.estado || '').toUpperCase());
+        kvRow(7, 'Fecha de ingreso', fmtDate(lote.fechaIngreso), 'Cantidad inicial', lote.cantidadInicial);
+        kvRow(8, 'Cantidad vendida', lote.cantidadSalida || 0, 'Cantidad activa', lote.cantidadActual ?? 0);
+
+        sectionHeader(10, 'INDICADORES FINANCIEROS');
+        kvRow(11, 'Ingresos totales', fmtMoney(totalIngresos), 'Costos totales', fmtMoney(totalCostos));
+        kvRow(12, 'Costo concentrado', fmtMoney(totalConsumo), 'Otros gastos', fmtMoney(totalGastos));
+        kvRow(13, 'Cerdos vendidos', totalCerdosVendidos, 'Peso total vendido', `${totalPesoVendido.toFixed(2)} kg`);
+
+        // Resultado destacado
+        ws.mergeCells('A15:B15');
+        const utilLabel = ws.getCell('A15');
+        utilLabel.value = 'UTILIDAD';
+        utilLabel.font = { bold: true, size: 12, color: { argb: 'FFFFFFFF' } };
+        utilLabel.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F2937' } };
+        utilLabel.alignment = { vertical: 'middle', horizontal: 'center' };
+
+        ws.mergeCells('C15:D15');
+        const utilVal = ws.getCell('C15');
+        utilVal.value = fmtMoney(utilidad);
+        const utilColor = utilidad > 0 ? 'FF15803D' : utilidad < 0 ? 'FFB91C1C' : 'FF6B7280';
+        utilVal.font = { bold: true, size: 16, color: { argb: 'FFFFFFFF' } };
+        utilVal.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: utilColor } };
+        utilVal.alignment = { vertical: 'middle', horizontal: 'center' };
+        ws.getRow(15).height = 32;
+
+        kvRow(16, 'Margen de utilidad', `${margen.toFixed(2)} %`, 'Resultado', estado);
+
+        // Desglose por categoría de gastos
+        if (gastosPorCat.length > 0) {
+          sectionHeader(18, 'DESGLOSE DE GASTOS POR CATEGORÍA');
+          gastosPorCat.forEach((g: any, i: number) => {
+            const row = 19 + i;
+            const a = ws.getCell(`A${row}`); a.value = CATEGORIAS_LABEL[g._id] || g._id;
+            a.font = { bold: true, color: { argb: 'FF4B5563' } };
+            a.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF9FAFB' } };
+            a.border = { bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } } };
+            ws.mergeCells(`B${row}:D${row}`);
+            const b = ws.getCell(`B${row}`); b.value = fmtMoney(g.total);
+            b.font = { color: { argb: 'FFB91C1C' }, bold: true };
+            b.alignment = { horizontal: 'right' };
+            b.border = { bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } } };
+          });
+        }
+
+        // ============ HOJA 2: VENTAS ============
+        const wsVentas = wb.addWorksheet('Ventas', { views: [{ showGridLines: false }] });
+        addTableSheet(wsVentas, 'VENTAS', [
+          { header: 'Fecha', key: 'fecha', width: 14 },
+          { header: 'Cerdos', key: 'cerdos', width: 10 },
+          { header: 'Peso (kg)', key: 'peso', width: 12 },
+          { header: 'Precio/kg', key: 'precio', width: 14 },
+          { header: 'Ingreso total', key: 'ingreso', width: 18 },
+          { header: 'Comprador', key: 'comprador', width: 24 },
+        ], ventas.map((v: any) => ({
+          fecha: fmtDate(v.fechaVenta),
+          cerdos: v.cantidadCerdos,
+          peso: Number((v.pesoTotalKg || 0).toFixed(2)),
+          precio: fmtMoney(v.precioPorKg),
+          ingreso: fmtMoney(v.ingresoTotal),
+          comprador: v.comprador || '—',
+        })), {
+          totalRow: { fecha: 'TOTAL', cerdos: totalCerdosVendidos, peso: Number(totalPesoVendido.toFixed(2)), precio: '', ingreso: fmtMoney(totalIngresos), comprador: '' },
+        });
+
+        // ============ HOJA 3: CONSUMOS ============
+        const wsCon = wb.addWorksheet('Consumos', { views: [{ showGridLines: false }] });
+        addTableSheet(wsCon, 'CONSUMOS DE CONCENTRADO', [
+          { header: 'Fecha', key: 'fecha', width: 14 },
+          { header: 'Concentrado', key: 'tipo', width: 24 },
+          { header: 'Cantidad', key: 'cantidad', width: 12 },
+          { header: 'Precio unitario', key: 'precio', width: 16 },
+          { header: 'Costo total', key: 'costo', width: 16 },
+        ], consumos.map((c: any) => ({
+          fecha: fmtDate(c.fecha),
+          tipo: c.concentradoTipoId?.nombre || '—',
+          cantidad: c.cantidad,
+          precio: fmtMoney(c.precioUnitario),
+          costo: fmtMoney(c.costoTotal),
+        })), {
+          totalRow: { fecha: 'TOTAL', tipo: '', cantidad: '', precio: '', costo: fmtMoney(totalConsumo) },
+        });
+
+        // ============ HOJA 4: GASTOS ============
+        const wsG = wb.addWorksheet('Gastos', { views: [{ showGridLines: false }] });
+        addTableSheet(wsG, 'GASTOS ADICIONALES', [
+          { header: 'Fecha', key: 'fecha', width: 14 },
+          { header: 'Categoría', key: 'cat', width: 18 },
+          { header: 'Descripción', key: 'desc', width: 32 },
+          { header: 'Monto', key: 'monto', width: 16 },
+        ], gastos.map((g: any) => ({
+          fecha: fmtDate(g.fecha),
+          cat: CATEGORIAS_LABEL[g.categoria] || g.categoria,
+          desc: g.descripcion || '—',
+          monto: fmtMoney(g.monto),
+        })), {
+          totalRow: { fecha: 'TOTAL', cat: '', desc: '', monto: fmtMoney(totalGastos) },
+        });
+
+        const buf = await wb.xlsx.writeBuffer();
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', `attachment; filename=${baseFile}.xlsx`);
+        return res.send(Buffer.from(buf));
+      }
+
+      if (formato === 'pdf') {
+        const pdfBuffer = await new Promise<Buffer>((resolve, reject) => {
+          const chunks: Buffer[] = [];
+          const doc = new PDFDocument({ size: 'LETTER', margin: 48, info: {
+            Title: `Reporte ${lote.nombre}`,
+            Author: empresa?.nombre || 'Porcine SaaS',
+            Subject: 'Reporte de rentabilidad',
+          }});
+
+          doc.on('data', (chunk) => chunks.push(chunk));
+          doc.on('end', () => resolve(Buffer.concat(chunks)));
+          doc.on('error', reject);
+
+          const PAGE_W = doc.page.width;
+          const PAGE_H = doc.page.height;
+          const M = 48;
+          const COL_W = PAGE_W - M * 2;
+          const CONTENT_H = PAGE_H - M * 2; // espacio útil por página
+
+          // Colores
+          const GREEN = '#16a34a';
+          const GREEN_DARK = '#15803d';
+          const RED = '#b91c1c';
+          const GREY_DARK = '#374151';
+          const GREY = '#6b7280';
+          const GREY_LIGHT = '#f3f4f6';
+          const TEXT = '#111827';
+
+          // Trackear posición Y manualmente
+          let currentY = M;
+
+          const addPageIfNeeded = (needed: number) => {
+            if (currentY + needed > PAGE_H - M - 10) { // -10 para margen inferior
+              doc.addPage();
+              currentY = M;
+              return true;
+            }
+            return false;
+          };
+
+          // ===== HEADER (página 1) =====
+          doc.rect(0, 0, PAGE_W, 85).fill(GREEN_DARK);
+          doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(16)
+            .text((empresa?.nombre || 'Porcine SaaS').toUpperCase(), M, 18, { width: COL_W, align: 'center' });
+          doc.font('Helvetica').fontSize(10).fillColor('#ffffff')
+            .text('Reporte de Rentabilidad', M, 44, { width: COL_W, align: 'center' });
+          doc.fontSize(8).fillColor('#d1fae5')
+            .text(`Generado: ${fmtDate(new Date())}`, M, 64, { width: COL_W, align: 'center' });
+
+          currentY = 105;
+
+          // ===== TÍTULO LOTE =====
+          doc.fillColor(TEXT).font('Helvetica-Bold').fontSize(14)
+            .text(lote.nombre, M, currentY, { width: COL_W });
+          currentY += 16;
+          doc.fillColor(GREY).font('Helvetica').fontSize(9)
+            .text(`Estado: ${(lote.estado || '').toUpperCase()} | Ingresó: ${fmtDate(lote.fechaIngreso)}`, M, currentY, { width: COL_W });
+          currentY += 18;
+
+          // ===== KPI cards =====
+          const KPI_H = 60;
+          const kpiGap = 8;
+          const kpiW = (COL_W - kpiGap * 2) / 3;
+          const kpiY = currentY;
+
+          // Card 1: Ingresos
+          doc.rect(M, kpiY, kpiW, KPI_H).fillAndStroke('#ffffff', '#e5e7eb');
+          doc.fillColor(GREY).font('Helvetica-Bold').fontSize(7)
+            .text('INGRESOS', M + 8, kpiY + 8, { width: kpiW - 16 });
+          doc.fillColor(GREEN).font('Helvetica-Bold').fontSize(12)
+            .text(fmtMoney(totalIngresos), M + 8, kpiY + 22, { width: kpiW - 16 });
+
+          // Card 2: Costos
+          doc.rect(M + kpiW + kpiGap, kpiY, kpiW, KPI_H).fillAndStroke('#ffffff', '#e5e7eb');
+          doc.fillColor(GREY).font('Helvetica-Bold').fontSize(7)
+            .text('COSTOS', M + kpiW + kpiGap + 8, kpiY + 8, { width: kpiW - 16 });
+          doc.fillColor(RED).font('Helvetica-Bold').fontSize(12)
+            .text(fmtMoney(totalCostos), M + kpiW + kpiGap + 8, kpiY + 22, { width: kpiW - 16 });
+
+          // Card 3: Utilidad
+          doc.rect(M + (kpiW + kpiGap) * 2, kpiY, kpiW, KPI_H).fillAndStroke('#ffffff', '#e5e7eb');
+          doc.fillColor(GREY).font('Helvetica-Bold').fontSize(7)
+            .text('UTILIDAD', M + (kpiW + kpiGap) * 2 + 8, kpiY + 8, { width: kpiW - 16 });
+          doc.fillColor(utilidad >= 0 ? GREEN : RED).font('Helvetica-Bold').fontSize(12)
+            .text(fmtMoney(utilidad), M + (kpiW + kpiGap) * 2 + 8, kpiY + 22, { width: kpiW - 16 });
+
+          currentY = kpiY + KPI_H + 16;
+
+          // ===== INFO LOTE =====
+          addPageIfNeeded(50);
+          const infoY = currentY;
+          doc.rect(M, infoY, COL_W, 22).fill(GREY_DARK);
+          doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(10)
+            .text('INFORMACIÓN DEL LOTE', M + 10, infoY + 6, { width: COL_W - 20 });
+          currentY = infoY + 28;
+
+          // Fila 1
+          const kvRowY = currentY;
+          const colW = COL_W / 2;
+          doc.rect(M, kvRowY, COL_W, 36).fill(GREY_LIGHT);
+          doc.fillColor(GREY).font('Helvetica-Bold').fontSize(7)
+            .text('CANTIDAD INICIAL', M + 8, kvRowY + 6, { width: colW - 16 })
+            .text('CANTIDAD ACTUAL', M + colW + 8, kvRowY + 6, { width: colW - 16 });
+          doc.fillColor(TEXT).font('Helvetica').fontSize(9)
+            .text(String(lote.cantidadInicial), M + 8, kvRowY + 16, { width: colW - 16 })
+            .text(String(lote.cantidadActual ?? 0), M + colW + 8, kvRowY + 16, { width: colW - 16 });
+          currentY = kvRowY + 42;
+
+          // Fila 2
+          const kvRowY2 = currentY;
+          doc.rect(M, kvRowY2, COL_W, 36).fill(GREY_LIGHT);
+          doc.fillColor(GREY).font('Helvetica-Bold').fontSize(7)
+            .text('CANTIDAD VENDIDA', M + 8, kvRowY2 + 6, { width: colW - 16 })
+            .text('ESTADO', M + colW + 8, kvRowY2 + 6, { width: colW - 16 });
+          doc.fillColor(TEXT).font('Helvetica').fontSize(9)
+            .text(String(lote.cantidadSalida || 0), M + 8, kvRowY2 + 16, { width: colW - 16 })
+            .text((lote.estado || '').toUpperCase(), M + colW + 8, kvRowY2 + 16, { width: colW - 16 });
+          currentY = kvRowY2 + 48;
+
+          // ===== INDICADORES =====
+          addPageIfNeeded(90);
+          const indY = currentY;
+          doc.rect(M, indY, COL_W, 22).fill(GREY_DARK);
+          doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(10)
+            .text('INDICADORES FINANCIEROS', M + 10, indY + 6, { width: COL_W - 20 });
+          currentY = indY + 28;
+
+          // 3 filas de indicadores
+          const indicators = [
+            ['INGRESOS TOTALES', fmtMoney(totalIngresos), 'COSTOS TOTALES', fmtMoney(totalCostos)],
+            ['COSTO CONCENTRADO', fmtMoney(totalConsumo), 'OTROS GASTOS', fmtMoney(totalGastos)],
+            ['CERDOS VENDIDOS', String(totalCerdosVendidos), 'PESO TOTAL', `${totalPesoVendido.toFixed(2)} kg`],
+          ];
+
+          indicators.forEach(([k1, v1, k2, v2]) => {
+            const rowY = currentY;
+            doc.rect(M, rowY, COL_W, 36).fill(GREY_LIGHT);
+            doc.fillColor(GREY).font('Helvetica-Bold').fontSize(7)
+              .text(k1, M + 8, rowY + 6, { width: colW - 16 })
+              .text(k2, M + colW + 8, rowY + 6, { width: colW - 16 });
+            doc.fillColor(TEXT).font('Helvetica').fontSize(9)
+              .text(v1, M + 8, rowY + 16, { width: colW - 16 })
+              .text(v2, M + colW + 8, rowY + 16, { width: colW - 16 });
+            currentY = rowY + 42;
+          });
+
+          // Margen y resultado
+          const margY = currentY;
+          doc.rect(M, margY, COL_W, 36).fill(GREY_LIGHT);
+          doc.fillColor(GREY).font('Helvetica-Bold').fontSize(7)
+            .text('MARGEN', M + 8, margY + 6, { width: colW - 16 })
+            .text('RESULTADO', M + colW + 8, margY + 6, { width: colW - 16 });
+          doc.fillColor(TEXT).font('Helvetica').fontSize(9)
+            .text(`${margen.toFixed(2)}%`, M + 8, margY + 16, { width: colW - 16 })
+            .text(estado, M + colW + 8, margY + 16, { width: colW - 16 });
+          currentY = margY + 50;
+
+          // ===== TABLA helper =====
+          const drawTable = (title: string, headers: string[], rows: string[][], widths: number[], totals?: string[]) => {
+            if (rows.length === 0) return;
+
+            const ROW_H = 16;
+            const HEADER_H = 18;
+            const tableTotalH = HEADER_H + rows.length * ROW_H + (totals ? 18 : 0) + 30;
+
+            addPageIfNeeded(tableTotalH);
+
+            // Header de sección
+            const secY = currentY;
+            doc.rect(M, secY, COL_W, 20).fill(GREY_DARK);
+            doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(10)
+              .text(title.toUpperCase(), M + 10, secY + 5, { width: COL_W - 20 });
+            currentY = secY + 26;
+
+            // Header de columnas
+            const headY = currentY;
+            doc.rect(M, headY, COL_W, HEADER_H).fill('#1f2937');
+            let cx = M;
+            doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(7);
+            headers.forEach((h, i) => {
+              doc.text(h.toUpperCase(), cx + 5, headY + 5, {
+                width: widths[i] - 10,
+                align: i === headers.length - 1 ? 'right' : 'left'
+              });
+              cx += widths[i];
+            });
+            currentY = headY + HEADER_H;
+
+            // Filas de datos
+            rows.forEach((row, idx) => {
+              let rowY = currentY;
+              // Check si necesita nueva página para esta fila
+              if (rowY + ROW_H > PAGE_H - M) {
+                doc.addPage();
+                currentY = M + 26;
+                doc.rect(M, currentY - 26, COL_W, HEADER_H).fill('#1f2937');
+                cx = M;
+                doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(7);
+                headers.forEach((h, j) => {
+                  doc.text(h.toUpperCase(), cx + 5, currentY - 21, {
+                    width: widths[j] - 10,
+                    align: j === headers.length - 1 ? 'right' : 'left'
+                  });
+                  cx += widths[j];
+                });
+                doc.fillColor(TEXT).font('Helvetica').fontSize(7);
+                rowY = currentY;
+              }
+
+              const bg = idx % 2 === 0 ? '#ffffff' : '#f9fafb';
+              doc.rect(M, rowY, COL_W, ROW_H).fill(bg);
+              doc.strokeColor('#e5e7eb').lineWidth(0.25).rect(M, rowY, COL_W, ROW_H).stroke();
+
+              cx = M;
+              doc.fillColor(TEXT).font('Helvetica').fontSize(7);
+              row.forEach((cell, i) => {
+                doc.text(String(cell), cx + 5, rowY + 4, {
+                  width: widths[i] - 10,
+                  align: i === row.length - 1 ? 'right' : 'left'
+                });
+                cx += widths[i];
+              });
+              currentY = rowY + ROW_H;
+            });
+
+            // Fila de totales
+            if (totals) {
+              const totY = currentY;
+              doc.rect(M, totY, COL_W, 18).fill('#374151');
+              cx = M;
+              doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(8);
+              totals.forEach((cell, i) => {
+                doc.text(String(cell), cx + 5, totY + 5, {
+                  width: widths[i] - 10,
+                  align: i === totals.length - 1 ? 'right' : 'left'
+                });
+                cx += widths[i];
+              });
+              currentY = totY + 22;
+            }
+
+            currentY += 6;
+          };
+
+          // Calcular anchos de columnas dinámicamente
+          const ventasWidths = [80, 50, 70, 90];
+          ventasWidths.push(COL_W - ventasWidths.reduce((a, b) => a + b, 0));
+
+          const consumosWidths = [80, 100, 60, 80];
+          consumosWidths.push(COL_W - consumosWidths.reduce((a, b) => a + b, 0));
+
+          const gastosWidths = [80, 90, COL_W - 280, 110];
+
+          // ===== VENTAS =====
+          if (ventas.length > 0) {
+            drawTable('VENTAS',
+              ['Fecha', 'Cerdos', 'Peso (kg)', '$/kg', 'Ingreso'],
+              ventas.map((v: any) => [
+                fmtDate(v.fechaVenta),
+                String(v.cantidadCerdos),
+                (v.pesoTotalKg || 0).toFixed(0),
+                fmtMoney(v.precioPorKg).replace('$', ''),
+                fmtMoney(v.ingresoTotal),
+              ]),
+              ventasWidths,
+              ['TOTAL', String(totalCerdosVendidos), totalPesoVendido.toFixed(0), '', fmtMoney(totalIngresos)],
+            );
+          }
+
+          // ===== CONSUMOS =====
+          if (consumos.length > 0) {
+            drawTable('CONSUMOS',
+              ['Fecha', 'Tipo', 'Cant', '$/unid', 'Costo'],
+              consumos.map((c: any) => [
+                fmtDate(c.fecha),
+                (c.concentradoTipoId?.nombre || '—').substring(0, 14),
+                String(c.cantidad),
+                fmtMoney(c.precioUnitario).replace('$', ''),
+                fmtMoney(c.costoTotal),
+              ]),
+              consumosWidths,
+              ['TOTAL', '', '', '', fmtMoney(totalConsumo)],
+            );
+          }
+
+          // ===== GASTOS =====
+          if (gastos.length > 0) {
+            drawTable('GASTOS',
+              ['Fecha', 'Categ', 'Desc', 'Monto'],
+              gastos.map((g: any) => [
+                fmtDate(g.fecha),
+                (CATEGORIAS_LABEL[g.categoria] || g.categoria).substring(0, 12),
+                (g.descripcion || '—').substring(0, 20),
+                fmtMoney(g.monto),
+              ]),
+              gastosWidths,
+              ['TOTAL', '', '', fmtMoney(totalGastos)],
+            );
+          }
+
+          // ===== FOOTER =====
+          const range = doc.bufferedPageRange();
+          for (let i = 0; i < range.count; i++) {
+            doc.switchToPage(range.start + i);
+            doc.fontSize(7).fillColor(GREY).font('Helvetica')
+              .text(`${empresa?.nombre || 'Porcine SaaS'}`, M, PAGE_H - 22, { width: COL_W / 2 })
+              .text(`Página ${i + 1}`, M + COL_W / 2, PAGE_H - 22, { width: COL_W / 2, align: 'right' });
+          }
+
+          doc.end();
+        });
+
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename=${baseFile}.pdf`);
+        res.setHeader('Content-Length', pdfBuffer.length);
+        return res.send(pdfBuffer);
+      }
+
+      return res.status(400).json({ error: 'Formato no soportado. Use excel o pdf.' });
+    } catch (error) {
+      console.error('Error al exportar:', error);
+      res.status(500).json({ error: 'Error al exportar datos', message: error instanceof Error ? error.message : undefined });
+    }
+  },
+};
+
+// Helper para hojas de Excel con tabla con encabezado verde y totales
+function addTableSheet(
+  ws: ExcelJS.Worksheet,
+  title: string,
+  cols: { header: string; key: string; width: number }[],
+  rows: any[],
+  opts: { totalRow?: any } = {}
+) {
+  // Title banner
+  const lastCol = String.fromCharCode(64 + cols.length);
+  ws.mergeCells(`A1:${lastCol}1`);
+  const t = ws.getCell('A1');
+  t.value = title;
+  t.font = { bold: true, size: 16, color: { argb: 'FFFFFFFF' } };
+  t.alignment = { vertical: 'middle', horizontal: 'center' };
+  t.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF15803D' } };
+  ws.getRow(1).height = 32;
+
+  cols.forEach((c, i) => { ws.getColumn(i + 1).width = c.width; });
+
+  // Header row
+  const headerRow = ws.getRow(3);
+  cols.forEach((c, i) => {
+    const cell = headerRow.getCell(i + 1);
+    cell.value = c.header;
+    cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F2937' } };
+    cell.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
+    cell.border = { bottom: { style: 'medium', color: { argb: 'FF15803D' } } };
+  });
+  headerRow.height = 24;
+
+  // Data rows
+  rows.forEach((r, idx) => {
+    const row = ws.getRow(4 + idx);
+    cols.forEach((c, i) => {
+      const cell = row.getCell(i + 1);
+      cell.value = r[c.key];
+      cell.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
+      cell.font = { size: 10, color: { argb: 'FF111827' } };
+      if (idx % 2 === 1) {
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF9FAFB' } };
+      }
+      cell.border = { bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } } };
+    });
+    row.height = 20;
+  });
+
+  // Total row
+  if (opts.totalRow) {
+    const totalRowNum = 4 + rows.length;
+    const tr = ws.getRow(totalRowNum);
+    cols.forEach((c, i) => {
+      const cell = tr.getCell(i + 1);
+      cell.value = opts.totalRow[c.key];
+      cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF374151' } };
+      cell.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
+    });
+    tr.height = 26;
+  }
+
+  // Empty state
+  if (rows.length === 0) {
+    ws.mergeCells(`A4:${lastCol}4`);
+    const e = ws.getCell('A4');
+    e.value = 'Sin registros';
+    e.font = { italic: true, color: { argb: 'FF9CA3AF' } };
+    e.alignment = { horizontal: 'center', vertical: 'middle' };
+    ws.getRow(4).height = 30;
+  }
+
+  ws.views = [{ state: 'frozen', ySplit: 3, showGridLines: false }];
+}
