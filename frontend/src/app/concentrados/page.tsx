@@ -27,7 +27,7 @@ export default function ConcentradosPage() {
   const [precioMode, setPrecioMode] = useState<'unitario' | 'total'>('unitario');
   const [precioTotal, setPrecioTotal] = useState('');
   const [cantidadBolsas, setCantidadBolsas] = useState('1');
-  const [pesoPorSaco, setPesoPorSaco] = useState('50');
+  const [pesoPorSaco, setPesoPorSaco] = useState('');
   const [unidadPeso, setUnidadPeso] = useState<'kg' | 'lb'>('kg');
 
   // ── Consumos state ───────────────────────────────────────────
@@ -82,7 +82,7 @@ export default function ConcentradosPage() {
     } else {
       setEditingConcentrado(null);
       setFormData({ nombre: '', descripcion: '', precioActual: '' });
-      setPesoPorSaco('50');
+      setPesoPorSaco('');
       setUnidadPeso('kg');
     }
     setPrecioMode('unitario');
@@ -207,7 +207,7 @@ export default function ConcentradosPage() {
                       <TableCell>
                         <div className="flex items-center gap-1.5 text-sm text-zinc-300">
                           <IconPackage size={13} />
-                          Saco ({c.pesoPorSaco ?? 50} kg)
+                          Saco {c.pesoPorSaco ? `(${c.pesoPorSaco} kg)` : ''}
                         </div>
                       </TableCell>
                       <TableCell align="right" className="font-medium text-green-400">{formatCurrency(c.precioActual)}</TableCell>
