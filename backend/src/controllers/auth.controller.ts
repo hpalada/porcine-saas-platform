@@ -81,6 +81,7 @@ export const authController = {
   },
 
   async verificar(req: Request, res: Response) {
+    res.setHeader('Cache-Control', 'no-store');
     res.json({ usuario: (req as any).usuario, valido: true });
   },
 

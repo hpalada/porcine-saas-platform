@@ -34,15 +34,16 @@ export function AppShell({ children }: { children: ReactNode }) {
 
         const res = await fetch(`${API_BASE}/auth/verificar`, {
           headers: { Authorization: `Bearer ${token}` },
+          cache: 'no-store',
         });
 
-        if (res.status === 403) {
+        if (res.status === 401 || res.status === 403) {
           const body = await res.json().catch(() => ({ error: 'Acceso suspendido' }));
           logout();
           localStorage.removeItem('porcine-auth');
           localStorage.removeItem('auth_token');
           const msg = encodeURIComponent(body.error || 'Tu acceso ha sido suspendido.');
-          router.push(`/login?error=${msg}`);
+          window.location.href = `/login?error=${msg}`;
         }
       } catch {
         // Network error — don't kick the user out, just wait

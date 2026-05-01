@@ -84,6 +84,7 @@ exports.authController = {
         }
     },
     async verificar(req, res) {
+        res.setHeader('Cache-Control', 'no-store');
         res.json({ usuario: req.usuario, valido: true });
     },
     // POST /api/auth/solicitar-reset
