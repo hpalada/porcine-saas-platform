@@ -35,6 +35,9 @@ export const authController = {
       await empresa.save();
       await usuario.save();
 
+      // Fire-and-forget — don't block the response on email delivery
+      sendWelcomeEmail(email, nombreUsuario, nombreEmpresa).catch(() => {});
+
       const token = makeToken({ usuarioId: usuario._id, empresaId: empresa._id, rol: usuario.rol });
       res.status(201).json({
         token,
@@ -326,13 +329,22 @@ export const authController = {
   },
 };
 
-export function verificarToken(req: Request, res: Response, next: Function) {
+export async function verificarToken(req: Request, res: Response, next: Function) {
   const token = req.headers.authorization?.split(' ')[1];
   if (!token) return res.status(401).json({ error: 'Token no proporcionado' });
   try {
     const decoded: any = jwt.verify(token, JWT_SECRET);
     (req as any).usuario = decoded;
     (req as any).empresaId = decoded.empresaId;
+
+    // Check subscription on every request — catches cancellations mid-session
+    if (decoded.empresaId) {
+      const empresa = await Empresa.findById(decoded.empresaId).select('suscripcionActiva accesoBloqueado').lean();
+      if (!empresa) return res.status(401).json({ error: 'Empresa no encontrada' });
+      if (empresa.accesoBloqueado) return res.status(403).json({ error: 'Acceso bloqueado por el administrador' });
+      if (!empresa.suscripcionActiva) return res.status(403).json({ error: 'Suscripción inactiva. Renueva tu plan para continuar.' });
+    }
+
     next();
   } catch {
     res.status(401).json({ error: 'Token inválido' });
