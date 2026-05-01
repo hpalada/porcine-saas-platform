@@ -1,24 +1,58 @@
 'use client';
 
 import { usePathname, useRouter } from 'next/navigation';
-import { ReactNode, useEffect, useState } from 'react';
+import { ReactNode, useEffect, useRef, useState } from 'react';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { ConnectionStatus } from './ConnectionStatus';
 import { useAuthStore } from '@/lib/auth-store';
 
 const NO_SHELL_ROUTES = ['/login', '/superadmin', '/superadmin/login', '/superadmin/dashboard', '/auth/callback', '/auth/completar-perfil'];
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
+const CHECK_INTERVAL = 30_000; // 30 seconds
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { isAuthenticated } = useAuthStore();
+  const { isAuthenticated, logout } = useAuthStore();
   const [mounted, setMounted] = useState(false);
   const isShellRoute = !NO_SHELL_ROUTES.some((r) => pathname === r || pathname.startsWith('/superadmin') || pathname.startsWith('/auth/'));
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  useEffect(() => { setMounted(true); }, []);
+
+  // Check subscription on every route change AND on a 30s interval
   useEffect(() => {
-    setMounted(true);
-  }, []);
+    if (!mounted || !isShellRoute || !isAuthenticated) return;
+
+    const verify = async () => {
+      try {
+        const token = localStorage.getItem('auth_token') || (() => {
+          try { return JSON.parse(localStorage.getItem('porcine-auth') || '{}')?.state?.token; } catch { return null; }
+        })();
+        if (!token) return;
+
+        const res = await fetch(`${API_BASE}/auth/verificar`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        if (res.status === 403) {
+          const body = await res.json().catch(() => ({ error: 'Acceso suspendido' }));
+          logout();
+          localStorage.removeItem('porcine-auth');
+          localStorage.removeItem('auth_token');
+          const msg = encodeURIComponent(body.error || 'Tu acceso ha sido suspendido.');
+          router.push(`/login?error=${msg}`);
+        }
+      } catch {
+        // Network error — don't kick the user out, just wait
+      }
+    };
+
+    verify();
+    intervalRef.current = setInterval(verify, CHECK_INTERVAL);
+    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
+  }, [mounted, isShellRoute, isAuthenticated, pathname]);
 
   useEffect(() => {
     if (!mounted) return;
