@@ -25,9 +25,20 @@ async function handleResponse<T>(response: Response): Promise<T> {
   if (response.status === 401) {
     if (typeof window !== 'undefined') {
       localStorage.removeItem('porcine-auth');
+      localStorage.removeItem('auth_token');
       window.location.href = '/login';
     }
     throw new Error('Sesión expirada');
+  }
+  if (response.status === 403) {
+    const body = await response.json().catch(() => ({ error: 'Acceso denegado' }));
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('porcine-auth');
+      localStorage.removeItem('auth_token');
+      const msg = encodeURIComponent(body.error || 'Tu acceso ha sido suspendido.');
+      window.location.href = `/login?error=${msg}`;
+    }
+    throw new Error(body.error || 'Acceso denegado');
   }
   if (!response.ok) {
     const error = await response.json().catch(() => ({ error: 'Error en la petición' }));
