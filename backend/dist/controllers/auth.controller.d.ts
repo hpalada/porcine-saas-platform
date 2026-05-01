@@ -10,6 +10,6 @@ export declare const authController: {
     googleCallback(req: Request, res: Response): Promise<void>;
     completarPerfilGoogle(req: Request, res: Response): Promise<Response<any, Record<string, any>> | undefined>;
 };
-export declare function verificarToken(req: Request, res: Response, next: Function): Response<any, Record<string, any>> | undefined;
+export declare function verificarToken(req: Request, res: Response, next: Function): Promise<Response<any, Record<string, any>> | undefined>;
 export declare function verificarRol(rolesPermitidos: string[]): (req: Request, res: Response, next: Function) => Response<any, Record<string, any>> | undefined;
 //# sourceMappingURL=auth.controller.d.ts.map

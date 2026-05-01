@@ -38,6 +38,8 @@ exports.authController = {
             empresa.usuarioAdminId = usuario._id;
             await empresa.save();
             await usuario.save();
+            // Fire-and-forget — don't block the response on email delivery
+            (0, email_1.sendWelcomeEmail)(email, nombreUsuario, nombreEmpresa).catch(() => { });
             const token = makeToken({ usuarioId: usuario._id, empresaId: empresa._id, rol: usuario.rol });
             res.status(201).json({
                 token,
@@ -304,19 +306,36 @@ exports.authController = {
         }
     },
 };
-function verificarToken(req, res, next) {
+async function verificarToken(req, res, next) {
     const token = req.headers.authorization?.split(' ')[1];
     if (!token)
         return res.status(401).json({ error: 'Token no proporcionado' });
+    let decoded;
     try {
-        const decoded = jsonwebtoken_1.default.verify(token, JWT_SECRET);
-        req.usuario = decoded;
-        req.empresaId = decoded.empresaId;
-        next();
+        decoded = jsonwebtoken_1.default.verify(token, JWT_SECRET);
     }
     catch {
-        res.status(401).json({ error: 'Token inválido' });
+        return res.status(401).json({ error: 'Token inválido' });
     }
+    req.usuario = decoded;
+    req.empresaId = decoded.empresaId;
+    // Check subscription on every request — catches cancellations mid-session
+    if (decoded.empresaId) {
+        try {
+            const empresa = await Empresa_1.Empresa.findById(decoded.empresaId).select('suscripcionActiva accesoBloqueado').lean();
+            if (!empresa)
+                return res.status(401).json({ error: 'Empresa no encontrada' });
+            if (empresa.accesoBloqueado)
+                return res.status(403).json({ error: 'Acceso bloqueado por el administrador' });
+            if (!empresa.suscripcionActiva)
+                return res.status(403).json({ error: 'Suscripción inactiva. Renueva tu plan para continuar.' });
+        }
+        catch (err) {
+            console.error('verificarToken DB error:', err);
+            // DB error — allow request through rather than blocking all traffic
+        }
+    }
+    next();
 }
 function verificarRol(rolesPermitidos) {
     return (req, res, next) => {

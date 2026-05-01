@@ -332,23 +332,31 @@ export const authController = {
 export async function verificarToken(req: Request, res: Response, next: Function) {
   const token = req.headers.authorization?.split(' ')[1];
   if (!token) return res.status(401).json({ error: 'Token no proporcionado' });
-  try {
-    const decoded: any = jwt.verify(token, JWT_SECRET);
-    (req as any).usuario = decoded;
-    (req as any).empresaId = decoded.empresaId;
 
-    // Check subscription on every request — catches cancellations mid-session
-    if (decoded.empresaId) {
+  let decoded: any;
+  try {
+    decoded = jwt.verify(token, JWT_SECRET);
+  } catch {
+    return res.status(401).json({ error: 'Token inválido' });
+  }
+
+  (req as any).usuario = decoded;
+  (req as any).empresaId = decoded.empresaId;
+
+  // Check subscription on every request — catches cancellations mid-session
+  if (decoded.empresaId) {
+    try {
       const empresa = await Empresa.findById(decoded.empresaId).select('suscripcionActiva accesoBloqueado').lean();
       if (!empresa) return res.status(401).json({ error: 'Empresa no encontrada' });
       if (empresa.accesoBloqueado) return res.status(403).json({ error: 'Acceso bloqueado por el administrador' });
       if (!empresa.suscripcionActiva) return res.status(403).json({ error: 'Suscripción inactiva. Renueva tu plan para continuar.' });
+    } catch (err) {
+      console.error('verificarToken DB error:', err);
+      // DB error — allow request through rather than blocking all traffic
     }
-
-    next();
-  } catch {
-    res.status(401).json({ error: 'Token inválido' });
   }
+
+  next();
 }
 
 export function verificarRol(rolesPermitidos: string[]) {
