@@ -9,7 +9,7 @@ import { useAuthStore } from '@/lib/auth-store';
 
 const NO_SHELL_ROUTES = ['/login', '/superadmin', '/superadmin/login', '/superadmin/dashboard', '/auth/callback', '/auth/completar-perfil'];
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
-const CHECK_INTERVAL = 30_000; // 30 seconds
+const CHECK_INTERVAL = 10_000; // 10 seconds
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();

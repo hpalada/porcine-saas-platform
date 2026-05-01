@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 import { AppShell } from '@/components/layout/AppShell';
 import { ThemeProvider } from '@/components/providers/ThemeProvider';
+import { SWRProvider } from '@/components/providers/SWRProvider';
 
 export const metadata: Metadata = {
   title: 'Porcine SaaS — Gestión de Granja Porcina',
@@ -17,7 +18,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body className="antialiased">
         <ThemeProvider>
-          <AppShell>{children}</AppShell>
+          <SWRProvider>
+            <AppShell>{children}</AppShell>
+          </SWRProvider>
         </ThemeProvider>
       </body>
     </html>
