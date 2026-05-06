@@ -41,3 +41,8 @@ coverage/
 # Misc
 .vercel
 .cache/
+
+# Sensitive config files (credentials / deploy secrets)
+RAILWAY_ENV.txt
+*.env.txt
+.claude/
