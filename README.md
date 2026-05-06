@@ -1,173 +1,115 @@
-# 🐷 Porcine SaaS - Sistema de Gestión de Granja Porcina
+# Porcine SaaS Platform
 
-Sistema web completo para el control de costos, producción y rentabilidad en granjas porcinas.
+Full-stack SaaS platform for pig farm management — production tracking, cost control, inventory, and profitability analytics. Built and deployed to production; used daily by real clients.
 
-## 🎯 Características Principales
+## Tech Stack
 
-- **Control de Lotes**: Gestión de lotes de cerdos con seguimiento de estado
-- **Tipos de Concentrado**: Configuración de fases de alimentación con precios variables
-- **Inventario**: Control de stock de concentrado con alertas de reposición
-- **Consumos (CORE)**: Registro diario de consumo con captura de precio histórico
-- **Gastos**: Registro de gastos adicionales (medicinas, transporte, mano de obra)
-- **Ventas**: Módulo de ventas con cálculo de ingresos
-- **Reportes**: Análisis de rentabilidad por lote con exportación a CSV/JSON
+| Layer | Technology |
+|---|---|
+| Frontend | Next.js 14, React 18, Tailwind CSS, SWR |
+| Backend | Node.js, Express, TypeScript |
+| Database | MongoDB, Mongoose |
+| Auth | JWT with subscription gating |
+| Infra | Docker, Railway |
 
-## 🏗️ Arquitectura
+## Architecture
 
 ```
 ┌─────────────────┐     ┌─────────────────┐     ┌──────────────┐
-│   Frontend      │────▶│   Backend       │────▶│   MongoDB    │
-│   Next.js 14    │◀────│   Express       │◀────│   Mongoose   │
-│   Tailwind CSS  │     │   TypeScript    │     │              │
+│   Frontend      │────▶│   Backend API   │────▶│   MongoDB    │
+│   Next.js 14    │◀────│   Express/TS    │◀────│   Mongoose   │
+│   Tailwind CSS  │     │   JWT Auth      │     │   Atlas      │
 └─────────────────┘     └─────────────────┘     └──────────────┘
 ```
 
-## 🚀 Inicio Rápido
+## Key Features
 
-### Prerrequisitos
+- **Batch management** — full lifecycle tracking of pig batches (quantity, dates, status)
+- **Feed cost tracking** — daily consumption with historical price capture (price locked at time of entry)
+- **Inventory control** — stock management with low-inventory alerts; consumption blocked when stock runs out
+- **Expense logging** — categorized additional costs (medicine, transport, labor) per batch
+- **Sales module** — revenue entry with automatic profit calculation
+- **Profitability reports** — per-batch breakdown of costs vs. revenue, margin %, CSV/JSON export
+- **Subscription gating** — multi-tenant architecture; access auto-revoked when subscription lapses
+- **Email notifications** — transactional emails via SMTP for account and billing events
 
-- Node.js 18+ 
-- MongoDB 7+ (o Docker)
+## Data Model
 
-### Opción 1: Docker (Recomendado)
+| Model | Purpose |
+|---|---|
+| `Lote` | Pig batch (count, start date, status) |
+| `ConcentradoTipo` | Feed type with current price and unit |
+| `ConsumoRegistro` | Daily feed usage with price snapshot |
+| `InventarioMovimiento` | Stock entries, exits, adjustments |
+| `GastoAdicional` | Miscellaneous expenses per batch |
+| `VentaRegistro` | Sale events with weight, price, revenue |
 
-```bash
-cd porcine-saas
-docker-compose up -d
+### Profitability Formula
+
+```
+Profit = Revenue − (Feed Costs + Additional Expenses)
+Margin = (Profit / Revenue) × 100
 ```
 
-Accede a:
-- Frontend: http://localhost:3000
-- Backend: http://localhost:3001
-
-### Opción 2: Manual
-
-#### 1. Iniciar MongoDB
-
-```bash
-# Con Docker
-docker run -d -p 27017:27017 --name porcine-mongodb mongo:7
-
-# O local
-mongod --dbpath /data/db
-```
-
-#### 2. Backend
-
-```bash
-cd backend
-npm install
-cp .env.example .env
-npm run seed        # Datos de ejemplo
-npm run dev         # http://localhost:3001
-```
-
-#### 3. Frontend
-
-```bash
-cd frontend
-npm install
-npm run dev         # http://localhost:3000
-```
-
-## 📁 Estructura del Proyecto
+## Project Structure
 
 ```
 porcine-saas/
 ├── backend/
-│   ├── src/
-│   │   ├── config/         # Configuración de DB
-│   │   ├── controllers/    # Lógica de negocio
-│   │   ├── models/         # Schemas Mongoose
-│   │   ├── routes/         # Endpoints API
-│   │   ├── utils/          # Helpers y seed
-│   │   └── server.ts       # Entry point
-│   ├── package.json
-│   └── tsconfig.json
+│   └── src/
+│       ├── config/         # DB connection
+│       ├── controllers/    # Business logic
+│       ├── models/         # Mongoose schemas
+│       ├── routes/         # REST endpoints
+│       └── middleware/     # Auth, subscription check
 ├── frontend/
-│   ├── src/
-│   │   ├── app/            # Next.js App Router
-│   │   ├── components/     # UI components
-│   │   ├── lib/            # API client, utils
-│   │   └── types/          # TypeScript types
-│   ├── package.json
-│   └── tailwind.config.ts
-├── docker-compose.yml
-└── README.md
+│   └── src/
+│       ├── app/            # Next.js App Router
+│       ├── components/     # UI components
+│       └── lib/            # API client, utils
+└── docker-compose.yml
 ```
 
-## 📊 Modelos de Datos
+## Local Setup
 
-### Lote
-- Nombre, cantidad de cerdos, fecha inicio, estado
+```bash
+# 1. Backend
+cd backend
+cp .env.example .env      # fill in MongoDB URI and JWT secret
+npm install
+npm run seed              # optional: seed sample data
+npm run dev               # http://localhost:3001
 
-### ConcentradoTipo
-- Nombre, descripción, precio actual, unidad (saco/kg)
+# 2. Frontend
+cd frontend
+cp .env.local.example .env.local
+npm install
+npm run dev               # http://localhost:3000
 
-### ConsumoRegistro (CORE)
-- Lote, concentrado, cantidad, **precio capturado**, costo total, fecha
+# Or run both with Docker
+docker-compose up -d
+```
 
-### InventarioMovimiento
-- Tipo (entrada/salida/ajuste), cantidad, stock anterior/nuevo
+## REST API — Core Endpoints
 
-### GastoAdicional
-- Categoría, descripción, monto, lote (opcional)
+```
+GET  /api/lotes                       List batches
+POST /api/lotes                       Create batch
+GET  /api/lotes/:id/resumen           Batch cost summary
 
-### VentaRegistro
-- Lote, cantidad, peso total, precio/kg, ingreso total
+GET  /api/inventario                  Current stock
+POST /api/inventario/compra           Record purchase
 
-## 🔌 API Endpoints
+POST /api/consumos                    Log feed consumption (validates stock)
 
-### Lotes
-- `GET /api/lotes` - Listar
-- `POST /api/lotes` - Crear
-- `GET /api/lotes/:id/resumen` - Resumen con costos
+GET  /api/reportes/rentabilidad/:id   Full profitability report
+GET  /api/reportes/exportar/:id       Export batch data (CSV/JSON)
+```
 
-### Concentrados
-- `GET /api/concentrados` - Listar tipos
-- `POST /api/concentrados` - Crear
-- `PUT /api/concentrados/:id` - Actualizar precio
+## Highlights
 
-### Inventario
-- `GET /api/inventario` - Stock actual
-- `POST /api/inventario/compra` - Registrar entrada
-- `GET /api/inventario/historial` - Movimientos
-
-### Consumos
-- `POST /api/consumos` - Registrar (valida stock)
-- `GET /api/consumos` - Listar con filtros
-
-### Reportes
-- `GET /api/reportes/rentabilidad/:loteId` - Análisis completo
-- `GET /api/reportes/exportar/:loteId` - Exportar datos
-
-## 💡 Reglas de Negocio Clave
-
-1. **Precio Histórico**: El precio del concentrado se captura al momento del consumo y nunca cambia retroactivamente
-
-2. **Validación de Stock**: No se permite registrar consumo mayor al stock disponible
-
-3. **Cálculo Automático**: El costo total se calcula como `cantidad × precioUnitario`
-
-4. **Rentabilidad**: 
-   ```
-   Utilidad = Ingresos - (Costos Concentrado + Otros Gastos)
-   Margen = (Utilidad / Ingresos) × 100
-   ```
-
-## 🛠️ Tecnologías
-
-| Capa | Tecnología |
-|------|------------|
-| Frontend | Next.js 14, React 18, Tailwind CSS, SWR, Recharts |
-| Backend | Node.js, Express, TypeScript, Mongoose |
-| Database | MongoDB 7 |
-| DevOps | Docker, Docker Compose |
-
-## 📝 Licencia
-
-MIT
-
----
-
-Desarrollado para gestión eficiente de granjas porcinas 🐷
+- Deployed and running in production with real clients
+- Designed the relational data model and full REST API from scratch
+- Implemented subscription-based access control that auto-revokes on cancellation
+- Historical price capture ensures cost records are immutable after entry
+- Containerized with Docker for consistent local and cloud deployment on Railway
