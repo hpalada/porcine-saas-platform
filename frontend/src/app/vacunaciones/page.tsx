@@ -237,7 +237,7 @@ export default function VacunacionesPage() {
 
           <div className="grid grid-cols-2 gap-4">
             <Input label="Fecha de aplicación" type="date" value={formData.fecha} onChange={(e) => setFormData({ ...formData, fecha: e.target.value })} required />
-            <Input label="Dosis" value={formData.dosis} onChange={(e) => setFormData({ ...formData, dosis: e.target.value })} required />
+            <Input label="Dosis (ej: 2ml)" value={formData.dosis} onChange={(e) => setFormData({ ...formData, dosis: e.target.value })} />
           </div>
 
           <div className="grid grid-cols-2 gap-4">

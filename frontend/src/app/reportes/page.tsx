@@ -13,9 +13,10 @@ import { IconTrendingUp, IconTrendingDown, IconMinus, IconDownload, IconBarChart
 export default function ReportesPage() {
   const [loteSeleccionado, setLoteSeleccionado] = useState('');
   const { data: lotes = [] } = useSWR('/api/lotes', () => api.lotes.list());
-  const { data: reporte } = useSWR(
+  const { data: reporte, error: reporteError, isLoading: reporteLoading } = useSWR(
     loteSeleccionado ? `/api/reportes/resumen-completo/${loteSeleccionado}` : null,
-    () => api.reportes.resumenCompleto(loteSeleccionado)
+    () => api.reportes.resumenCompleto(loteSeleccionado),
+    { revalidateOnFocus: false }
   );
 
   const [exportando, setExportando] = useState<'excel' | 'pdf' | null>(null);
@@ -94,6 +95,24 @@ export default function ReportesPage() {
           )}
         </div>
       </Card>
+
+      {loteSeleccionado && reporteLoading && (
+        <Card>
+          <div className="flex items-center justify-center py-16 gap-3 text-zinc-400">
+            <div className="animate-spin w-5 h-5 border-2 border-green-500 border-t-transparent rounded-full" />
+            <span>Cargando reporte...</span>
+          </div>
+        </Card>
+      )}
+
+      {loteSeleccionado && reporteError && (
+        <Card>
+          <div className="text-center py-12 text-red-400">
+            <p className="font-semibold">Error al cargar el reporte</p>
+            <p className="text-sm mt-1 text-zinc-500">{reporteError?.message || 'Verifica tu conexión o intenta de nuevo'}</p>
+          </div>
+        </Card>
+      )}
 
       {r && r.lote ? (
         <>
@@ -228,14 +247,14 @@ export default function ReportesPage() {
             )}
           </Card>
         </>
-      ) : (
+      ) : (!loteSeleccionado && (
         <Card>
           <div className="text-center py-16 text-zinc-400">
             <IconBarChart size={44} className="mx-auto mb-3 text-zinc-700" />
             <p>Selecciona un lote para ver el análisis completo</p>
           </div>
         </Card>
-      )}
+      ))}
     </div>
   );
 }
