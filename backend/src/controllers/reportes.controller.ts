@@ -286,7 +286,7 @@ export const reportesController = {
       const empresa = await Empresa.findById(empresaId);
       const empresaOid = new mongoose.Types.ObjectId(empresaId as string);
 
-      const [consumos, gastos, ventas, gastosPorCat] = await Promise.all([
+      const [consumos, gastos, ventas, gastosPorCat, vacunaciones, otrosConsumos, mortalidades] = await Promise.all([
         ConsumoRegistro.find({ loteId, empresaId }).populate('concentradoTipoId', 'nombre').sort({ fecha: 1 }),
         GastoAdicional.find({ loteId, empresaId }).sort({ fecha: 1 }),
         VentaRegistro.find({ loteId, empresaId }).sort({ fechaVenta: 1 }),
@@ -294,14 +294,20 @@ export const reportesController = {
           { $match: { loteId, empresaId: empresaOid } },
           { $group: { _id: '$categoria', total: { $sum: '$monto' } } },
         ]),
+        VacunacionLote.find({ loteId, empresaId }).sort({ fecha: 1 }),
+        OtroConsumo.find({ loteId, empresaId }).sort({ fecha: 1 }),
+        MortalidadLote.find({ loteId, empresaId }).sort({ fecha: 1 }),
       ]);
 
       const totalConsumo = consumos.reduce((s: number, c: any) => s + (c.costoTotal || 0), 0);
       const totalGastos = gastos.reduce((s: number, g: any) => s + (g.monto || 0), 0);
+      const totalVacunas = vacunaciones.reduce((s: number, v: any) => s + ((v.precioUnitario || 0) * (v.cantidadAplicada || 0)), 0);
+      const totalOtrosConsumos = otrosConsumos.reduce((s: number, o: any) => s + (o.costoTotal || 0), 0);
+      const totalMuertas = mortalidades.reduce((s: number, m: any) => s + (m.cantidadMuertas || 0), 0);
       const totalIngresos = ventas.reduce((s: number, v: any) => s + (v.ingresoTotal || 0), 0);
       const totalCerdosVendidos = ventas.reduce((s: number, v: any) => s + (v.cantidadCerdos || 0), 0);
       const totalPesoVendido = ventas.reduce((s: number, v: any) => s + (v.pesoTotalKg || 0), 0);
-      const totalCostos = totalConsumo + totalGastos;
+      const totalCostos = totalConsumo + totalGastos + totalVacunas + totalOtrosConsumos;
       const utilidad = totalIngresos - totalCostos;
       const margen = totalIngresos > 0 ? (utilidad / totalIngresos) * 100 : 0;
       const estado = utilidad > 0 ? 'RENTABLE' : utilidad < 0 ? 'PÉRDIDA' : 'EQUILIBRIO';
@@ -384,33 +390,35 @@ export const reportesController = {
 
         sectionHeader(10, 'INDICADORES FINANCIEROS');
         kvRow(11, 'Ingresos totales', fmtMoney(totalIngresos), 'Costos totales', fmtMoney(totalCostos));
-        kvRow(12, 'Costo concentrado', fmtMoney(totalConsumo), 'Otros gastos', fmtMoney(totalGastos));
-        kvRow(13, 'Cerdos vendidos', totalCerdosVendidos, 'Peso total vendido', `${totalPesoVendido.toFixed(2)} kg`);
+        kvRow(12, 'Costo concentrado', fmtMoney(totalConsumo), 'Otros gastos adicionales', fmtMoney(totalGastos));
+        kvRow(13, 'Vacunas', fmtMoney(totalVacunas), 'Otros consumos', fmtMoney(totalOtrosConsumos));
+        kvRow(14, 'Cerdos vendidos', totalCerdosVendidos, 'Peso total vendido', `${totalPesoVendido.toFixed(2)} kg`);
+        kvRow(15, 'Mortalidades', totalMuertas, 'Tasa mortalidad', lote.cantidadInicial > 0 ? `${((totalMuertas / lote.cantidadInicial) * 100).toFixed(2)}%` : '0%');
 
         // Resultado destacado
-        ws.mergeCells('A15:B15');
-        const utilLabel = ws.getCell('A15');
+        ws.mergeCells('A17:B17');
+        const utilLabel = ws.getCell('A17');
         utilLabel.value = 'UTILIDAD';
         utilLabel.font = { bold: true, size: 12, color: { argb: 'FFFFFFFF' } };
         utilLabel.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F2937' } };
         utilLabel.alignment = { vertical: 'middle', horizontal: 'center' };
 
-        ws.mergeCells('C15:D15');
-        const utilVal = ws.getCell('C15');
+        ws.mergeCells('C17:D17');
+        const utilVal = ws.getCell('C17');
         utilVal.value = fmtMoney(utilidad);
         const utilColor = utilidad > 0 ? 'FF15803D' : utilidad < 0 ? 'FFB91C1C' : 'FF6B7280';
         utilVal.font = { bold: true, size: 16, color: { argb: 'FFFFFFFF' } };
         utilVal.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: utilColor } };
         utilVal.alignment = { vertical: 'middle', horizontal: 'center' };
-        ws.getRow(15).height = 32;
+        ws.getRow(17).height = 32;
 
-        kvRow(16, 'Margen de utilidad', `${margen.toFixed(2)} %`, 'Resultado', estado);
+        kvRow(18, 'Margen de utilidad', `${margen.toFixed(2)} %`, 'Resultado', estado);
 
         // Desglose por categoría de gastos
         if (gastosPorCat.length > 0) {
-          sectionHeader(18, 'DESGLOSE DE GASTOS POR CATEGORÍA');
+          sectionHeader(20, 'DESGLOSE DE GASTOS POR CATEGORÍA');
           gastosPorCat.forEach((g: any, i: number) => {
-            const row = 19 + i;
+            const row = 21 + i;
             const a = ws.getCell(`A${row}`); a.value = CATEGORIAS_LABEL[g._id] || g._id;
             a.font = { bold: true, color: { argb: 'FF4B5563' } };
             a.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF9FAFB' } };
@@ -475,6 +483,56 @@ export const reportesController = {
           monto: fmtMoney(g.monto),
         })), {
           totalRow: { fecha: 'TOTAL', cat: '', desc: '', monto: fmtMoney(totalGastos) },
+        });
+
+        // ============ HOJA 5: VACUNACIONES ============
+        const wsVac = wb.addWorksheet('Vacunaciones', { views: [{ showGridLines: false }] });
+        addTableSheet(wsVac, 'VACUNACIONES', [
+          { header: 'Fecha', key: 'fecha', width: 14 },
+          { header: 'Vacuna', key: 'vacuna', width: 28 },
+          { header: 'Cant. aplicada', key: 'cantidad', width: 14 },
+          { header: 'Precio unitario', key: 'precio', width: 16 },
+          { header: 'Costo total', key: 'costo', width: 16 },
+        ], vacunaciones.map((v: any) => ({
+          fecha: fmtDate(v.fecha),
+          vacuna: v.vacuna || '—',
+          cantidad: v.cantidadAplicada,
+          precio: fmtMoney(v.precioUnitario),
+          costo: fmtMoney((v.precioUnitario || 0) * (v.cantidadAplicada || 0)),
+        })), {
+          totalRow: { fecha: 'TOTAL', vacuna: '', cantidad: '', precio: '', costo: fmtMoney(totalVacunas) },
+        });
+
+        // ============ HOJA 6: OTROS CONSUMOS ============
+        const wsOtros = wb.addWorksheet('Otros Consumos', { views: [{ showGridLines: false }] });
+        addTableSheet(wsOtros, 'OTROS CONSUMOS', [
+          { header: 'Fecha', key: 'fecha', width: 14 },
+          { header: 'Tipo', key: 'tipo', width: 24 },
+          { header: 'Cantidad', key: 'cantidad', width: 12 },
+          { header: 'Precio unitario', key: 'precio', width: 16 },
+          { header: 'Costo total', key: 'costo', width: 16 },
+        ], otrosConsumos.map((o: any) => ({
+          fecha: fmtDate(o.fecha),
+          tipo: o.tipo || '—',
+          cantidad: o.cantidad,
+          precio: fmtMoney(o.precioUnitario),
+          costo: fmtMoney(o.costoTotal),
+        })), {
+          totalRow: { fecha: 'TOTAL', tipo: '', cantidad: '', precio: '', costo: fmtMoney(totalOtrosConsumos) },
+        });
+
+        // ============ HOJA 7: MORTALIDADES ============
+        const wsMort = wb.addWorksheet('Mortalidades', { views: [{ showGridLines: false }] });
+        addTableSheet(wsMort, 'MORTALIDADES', [
+          { header: 'Fecha', key: 'fecha', width: 14 },
+          { header: 'Cantidad', key: 'cantidad', width: 12 },
+          { header: 'Motivo', key: 'motivo', width: 40 },
+        ], mortalidades.map((m: any) => ({
+          fecha: fmtDate(m.fecha),
+          cantidad: m.cantidadMuertas,
+          motivo: m.motivo || '—',
+        })), {
+          totalRow: { fecha: 'TOTAL', cantidad: totalMuertas, motivo: '' },
         });
 
         const buf = await wb.xlsx.writeBuffer();
@@ -610,11 +668,13 @@ export const reportesController = {
             .text('INDICADORES FINANCIEROS', M + 10, indY + 6, { width: COL_W - 20 });
           currentY = indY + 28;
 
-          // 3 filas de indicadores
+          // 5 filas de indicadores
           const indicators = [
             ['INGRESOS TOTALES', fmtMoney(totalIngresos), 'COSTOS TOTALES', fmtMoney(totalCostos)],
-            ['COSTO CONCENTRADO', fmtMoney(totalConsumo), 'OTROS GASTOS', fmtMoney(totalGastos)],
+            ['COSTO CONCENTRADO', fmtMoney(totalConsumo), 'GASTOS ADICIONALES', fmtMoney(totalGastos)],
+            ['VACUNAS', fmtMoney(totalVacunas), 'OTROS CONSUMOS', fmtMoney(totalOtrosConsumos)],
             ['CERDOS VENDIDOS', String(totalCerdosVendidos), 'PESO TOTAL', `${totalPesoVendido.toFixed(2)} kg`],
+            ['MORTALIDADES', String(totalMuertas), 'TASA MORTALIDAD', lote.cantidadInicial > 0 ? `${((totalMuertas / lote.cantidadInicial) * 100).toFixed(2)}%` : '0%'],
           ];
 
           indicators.forEach(([k1, v1, k2, v2]) => {
@@ -780,6 +840,55 @@ export const reportesController = {
               ]),
               gastosWidths,
               ['TOTAL', '', '', fmtMoney(totalGastos)],
+            );
+          }
+
+          // ===== VACUNACIONES =====
+          if (vacunaciones.length > 0) {
+            const vacWidths = [80, COL_W - 80 - 60 - 80 - 80, 60, 80, 80];
+            drawTable('VACUNACIONES',
+              ['Fecha', 'Vacuna', 'Cant', '$/unid', 'Costo'],
+              vacunaciones.map((v: any) => [
+                fmtDate(v.fecha),
+                (v.vacuna || '—').substring(0, 20),
+                String(v.cantidadAplicada),
+                fmtMoney(v.precioUnitario).replace('$', ''),
+                fmtMoney((v.precioUnitario || 0) * (v.cantidadAplicada || 0)),
+              ]),
+              vacWidths,
+              ['TOTAL', '', '', '', fmtMoney(totalVacunas)],
+            );
+          }
+
+          // ===== OTROS CONSUMOS =====
+          if (otrosConsumos.length > 0) {
+            const otrosWidths = [80, COL_W - 80 - 60 - 80 - 80, 60, 80, 80];
+            drawTable('OTROS CONSUMOS',
+              ['Fecha', 'Tipo', 'Cant', '$/unid', 'Costo'],
+              otrosConsumos.map((o: any) => [
+                fmtDate(o.fecha),
+                (o.tipo || '—').substring(0, 20),
+                String(o.cantidad),
+                fmtMoney(o.precioUnitario).replace('$', ''),
+                fmtMoney(o.costoTotal),
+              ]),
+              otrosWidths,
+              ['TOTAL', '', '', '', fmtMoney(totalOtrosConsumos)],
+            );
+          }
+
+          // ===== MORTALIDADES =====
+          if (mortalidades.length > 0) {
+            const mortWidths = [80, 60, COL_W - 140];
+            drawTable('MORTALIDADES',
+              ['Fecha', 'Cantidad', 'Motivo'],
+              mortalidades.map((m: any) => [
+                fmtDate(m.fecha),
+                String(m.cantidadMuertas),
+                (m.motivo || '—').substring(0, 40),
+              ]),
+              mortWidths,
+              ['TOTAL', String(totalMuertas), ''],
             );
           }
 
