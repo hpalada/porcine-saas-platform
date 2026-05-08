@@ -821,20 +821,25 @@ exports.reportesController = {
                 GastoAdicional_1.default.find({ loteId, empresaId }).sort({ fecha: 1 }).lean(),
                 VentaRegistro_1.default.find({ loteId, empresaId }).sort({ fechaVenta: 1 }).lean(),
             ]);
+            // Convierte cualquier valor de MongoDB (Decimal128, string, null) a número seguro
+            const n = (v) => {
+                if (v === null || v === undefined)
+                    return 0;
+                if (typeof v === 'object' && typeof v.toString === 'function')
+                    return parseFloat(v.toString()) || 0;
+                const num = Number(v);
+                return isNaN(num) ? 0 : num;
+            };
             // Calcular totales
-            const totalConsumosAlimento = consumos.reduce((sum, c) => sum + (Number(c.costoTotal) || 0), 0);
-            const totalVacunas = vacunaciones.reduce((sum, v) => {
-                const precio = Number(v.precioUnitario) || 0;
-                const cantidad = Number(v.cantidadAplicada) || 0;
-                return sum + (precio * cantidad);
-            }, 0);
-            const totalOtrosConsumos = otrosConsumosRecords.reduce((sum, o) => sum + (Number(o.costoTotal) || 0), 0);
-            const totalMortalidades = mortalidades.reduce((sum, m) => sum + (Number(m.cantidadMuertas) || 0), 0);
-            const totalGastos = gastos.reduce((sum, g) => sum + (Number(g.monto) || 0), 0);
-            const totalIngresos = ventas.reduce((sum, v) => sum + (Number(v.ingresoTotal) || 0), 0);
+            const totalConsumosAlimento = consumos.reduce((sum, c) => sum + n(c.costoTotal), 0);
+            const totalVacunas = vacunaciones.reduce((sum, v) => sum + (n(v.precioUnitario) * n(v.cantidadAplicada)), 0);
+            const totalOtrosConsumos = otrosConsumosRecords.reduce((sum, o) => sum + n(o.costoTotal), 0);
+            const totalMortalidades = mortalidades.reduce((sum, m) => sum + n(m.cantidadMuertas), 0);
+            const totalGastos = gastos.reduce((sum, g) => sum + n(g.monto), 0);
+            const totalIngresos = ventas.reduce((sum, v) => sum + n(v.ingresoTotal), 0);
             const costosTotales = Math.round((totalConsumosAlimento + totalVacunas + totalOtrosConsumos + totalGastos) * 100) / 100;
             const utilidad = Math.round((totalIngresos - costosTotales) * 100) / 100;
-            const margen = totalIngresos > 0 ? (((utilidad / totalIngresos) * 100)).toFixed(2) : '0.00';
+            const margen = totalIngresos > 0 ? ((utilidad / totalIngresos) * 100).toFixed(2) : '0.00';
             res.json({
                 lote: {
                     _id: lote._id,
