@@ -33,9 +33,7 @@ export const mortalidadController = {
       const registros = await MortalidadLote.find({
         loteId: new mongoose.Types.ObjectId(req.params.id),
         empresaId,
-      })
-        .sort({ fecha: -1 })
-        .select('-__v');
+      }).sort({ fecha: -1 }).select('-__v');
       res.json(registros);
     } catch (error) {
       res.status(500).json({ error: 'Error al obtener mortalidades del lote' });
@@ -43,8 +41,6 @@ export const mortalidadController = {
   },
 
   async crear(req: Request, res: Response) {
-    const session = await mongoose.startSession();
-    session.startTransaction();
     try {
       const empresaId = getEmpresaId(req);
       if (!empresaId) return res.status(401).json({ error: 'No autenticado' });
@@ -53,126 +49,77 @@ export const mortalidadController = {
       if (!loteId || !cantidadMuertas || !motivo) {
         return res.status(400).json({ error: 'loteId, cantidadMuertas y motivo son requeridos' });
       }
-      if (Number(cantidadMuertas) <= 0) {
-        return res.status(400).json({ error: 'La cantidad de muertes debe ser mayor a 0' });
+      const cantidad = Number(cantidadMuertas);
+      if (cantidad <= 0) {
+        return res.status(400).json({ error: 'La cantidad debe ser mayor a 0' });
       }
 
-      // Verify lote belongs to this empresa AND is active
-      const lote = await Lote.findOne({ _id: loteId, empresaId }).session(session);
+      const lote = await Lote.findOne({ _id: loteId, empresaId });
       if (!lote) return res.status(404).json({ error: 'Lote no encontrado' });
       if (lote.estado !== 'activo') {
         return res.status(400).json({ error: 'El lote debe estar activo para registrar mortalidades' });
       }
-      // Check that we have enough animals
-      if (lote.cantidadActual < Number(cantidadMuertas)) {
-        return res.status(400).json({ error: 'No hay suficientes animales vivos en el lote' });
+      if ((lote.cantidadActual || 0) < cantidad) {
+        return res.status(400).json({ error: `No hay suficientes animales vivos. Actuales: ${lote.cantidadActual}` });
       }
 
-      const mortalidad = new MortalidadLote({
+      const mortalidad = await MortalidadLote.create({
         empresaId,
         loteId,
-        cantidadMuertas: Number(cantidadMuertas),
+        cantidadMuertas: cantidad,
         fecha: fecha ? new Date(fecha) : new Date(),
         motivo,
         observaciones,
       });
-      await mortalidad.save({ session });
 
-      // Update lote: decrease cantidadActual by cantidadMuertas
-      lote.cantidadActual -= Number(cantidadMuertas);
-      // If cantidadActual becomes 0, we might want to change estado? Not required, but we can leave it.
-      await lote.save({ session });
-
-      await session.commitTransaction();
-      session.endSession();
+      await Lote.findByIdAndUpdate(loteId, { $inc: { cantidadActual: -cantidad } });
 
       res.status(201).json(mortalidad);
     } catch (error) {
-      await session.abortTransaction();
-      session.endSession();
       res.status(400).json({ error: 'Error al registrar mortalidad', message: error instanceof Error ? error.message : undefined });
     }
   },
 
   async actualizar(req: Request, res: Response) {
-    const session = await mongoose.startSession();
-    session.startTransaction();
     try {
       const empresaId = getEmpresaId(req);
       const { cantidadMuertas, fecha, motivo, observaciones } = req.body;
+
+      const mortalidadAnterior = await MortalidadLote.findOne({ _id: req.params.id, empresaId });
+      if (!mortalidadAnterior) return res.status(404).json({ error: 'Registro no encontrado' });
+
       const updateData: Record<string, any> = {};
-      if (cantidadMuertas !== undefined) {
-        if (Number(cantidadMuertas) <= 0) {
-          return res.status(400).json({ error: 'La cantidad de muertes debe ser mayor a 0' });
-        }
-        updateData.cantidadMuertas = Number(cantidadMuertas);
-      }
       if (fecha !== undefined) updateData.fecha = new Date(fecha);
       if (motivo !== undefined) updateData.motivo = motivo;
       if (observaciones !== undefined) updateData.observaciones = observaciones;
 
-      const mortalidad = await MortalidadLote.findOneAndUpdate(
-        { _id: req.params.id, empresaId },
-        updateData,
-        { new: true, runValidators: true, session }
-      );
-      if (!mortalidad) return res.status(404).json({ error: 'Registro no encontrado' });
-
-      // We need to update the lote: first, we have to reverse the old mortality and then apply the new one?
-      // Since we don't store the old cantidadMuertas in the update, we have to get the old record.
-      // For simplicity, we will not support updating the cantidadMuertas in this version? Or we do it by fetching the old record.
-      // Given the complexity, we will only allow updating fecha, motivo, observaciones and not cantidadMuertas.
-      // But the requirement might expect to update the cantidadMueltas.
-      // We'll do: if cantidadMuertas is being updated, we will adjust the lote accordingly.
-      // We'll fetch the old record to get the old cantidadMuertas.
-
-      if (updateData.cantidadMuertas !== undefined) {
-        const oldMortalidad = await MortalidadLote.findById(req.params.id).session(session);
-        if (!oldMortalidad) {
-          throw new Error('Mortalidad no encontrada para reversión');
+      if (cantidadMuertas !== undefined) {
+        const nuevaCantidad = Number(cantidadMuertas);
+        if (nuevaCantidad <= 0) return res.status(400).json({ error: 'La cantidad debe ser mayor a 0' });
+        const diferencia = nuevaCantidad - mortalidadAnterior.cantidadMuertas;
+        const lote = await Lote.findOne({ _id: mortalidadAnterior.loteId, empresaId });
+        if (lote && diferencia > 0 && (lote.cantidadActual || 0) < diferencia) {
+          return res.status(400).json({ error: `No hay suficientes animales vivos. Disponibles: ${lote.cantidadActual}` });
         }
-        // Reverse the old mortality: add back the old cantidadMuertas to the lote
-        const lote = await Lote.findOne({ _id: oldMortalidad.loteId, empresaId }).session(session);
-        if (lote) {
-          lote.cantidadActual += oldMortalidad.cantidadMuertas;
-          lote.cantidadActual -= updateData.cantidadMuertas;
-          await lote.save({ session });
-        }
+        updateData.cantidadMuertas = nuevaCantidad;
+        await Lote.findByIdAndUpdate(mortalidadAnterior.loteId, { $inc: { cantidadActual: -diferencia } });
       }
 
-      await session.commitTransaction();
-      session.endSession();
-
+      const mortalidad = await MortalidadLote.findByIdAndUpdate(req.params.id, updateData, { new: true, runValidators: true });
       res.json(mortalidad);
     } catch (error) {
-      await session.abortTransaction();
-      session.endSession();
       res.status(400).json({ error: 'Error al actualizar mortalidad', message: error instanceof Error ? error.message : undefined });
     }
   },
 
   async eliminar(req: Request, res: Response) {
-    const session = await mongoose.startSession();
-    session.startTransaction();
     try {
       const empresaId = getEmpresaId(req);
-      const mortalidad = await MortalidadLote.findOneAndDelete({ _id: req.params.id, empresaId }).session(session);
+      const mortalidad = await MortalidadLote.findOneAndDelete({ _id: req.params.id, empresaId });
       if (!mortalidad) return res.status(404).json({ error: 'Mortalidad no encontrada' });
-
-      // Reverse the mortality: add the cantidadMuertas back to the lote
-      const lote = await Lote.findOne({ _id: mortalidad.loteId, empresaId }).session(session);
-      if (lote) {
-        lote.cantidadActual += mortalidad.cantidadMuertas;
-        await lote.save({ session });
-      }
-
-      await session.commitTransaction();
-      session.endSession();
-
+      await Lote.findByIdAndUpdate(mortalidad.loteId, { $inc: { cantidadActual: mortalidad.cantidadMuertas } });
       res.json({ message: 'Mortalidad eliminada correctamente' });
     } catch (error) {
-      await session.abortTransaction();
-      session.endSession();
       res.status(500).json({ error: 'Error al eliminar mortalidad', message: error instanceof Error ? error.message : undefined });
     }
   },
