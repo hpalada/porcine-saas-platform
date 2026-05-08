@@ -10,6 +10,9 @@ const pdfkit_1 = __importDefault(require("pdfkit"));
 const ConsumoRegistro_1 = __importDefault(require("../models/ConsumoRegistro"));
 const GastoAdicional_1 = __importDefault(require("../models/GastoAdicional"));
 const VentaRegistro_1 = __importDefault(require("../models/VentaRegistro"));
+const OtroConsumo_1 = __importDefault(require("../models/OtroConsumo"));
+const VacunacionLote_1 = __importDefault(require("../models/VacunacionLote"));
+const MortalidadLote_1 = __importDefault(require("../models/MortalidadLote"));
 const Lote_1 = require("../models/Lote");
 const Empresa_1 = require("../models/Empresa");
 const CATEGORIAS_LABEL = {
@@ -31,7 +34,7 @@ exports.reportesController = {
             const lote = await Lote_1.Lote.findOne({ _id: loteId, empresaId });
             if (!lote)
                 return res.status(404).json({ error: 'Lote no encontrado' });
-            const [consumos, gastosPorCategoria, gastosTotales, ventas] = await Promise.all([
+            const [consumos, gastosPorCategoria, gastosTotales, ventas, vacunaciones, otrosConsumosData, mortalidades] = await Promise.all([
                 ConsumoRegistro_1.default.aggregate([
                     { $match: { loteId, empresaId: empresaOid } },
                     { $group: { _id: null, totalCostos: { $sum: '$costoTotal' }, cantidadTotal: { $sum: '$cantidad' } } },
@@ -48,14 +51,29 @@ exports.reportesController = {
                     { $match: { loteId, empresaId: empresaOid } },
                     { $group: { _id: null, totalIngresos: { $sum: '$ingresoTotal' }, totalCerdos: { $sum: '$cantidadCerdos' }, totalPeso: { $sum: '$pesoTotalKg' } } },
                 ]),
+                VacunacionLote_1.default.aggregate([
+                    { $match: { loteId, empresaId: empresaOid } },
+                    { $group: { _id: null, totalCosto: { $sum: { $multiply: ['$precioUnitario', '$cantidadAplicada'] } }, registros: { $sum: 1 } } },
+                ]),
+                OtroConsumo_1.default.aggregate([
+                    { $match: { loteId, empresaId: empresaOid } },
+                    { $group: { _id: null, totalCosto: { $sum: '$costoTotal' }, cantidad: { $sum: '$cantidad' } } },
+                ]),
+                MortalidadLote_1.default.aggregate([
+                    { $match: { loteId, empresaId: empresaOid } },
+                    { $group: { _id: null, totalMuertas: { $sum: '$cantidadMuertas' }, registros: { $sum: 1 } } },
+                ]),
             ]);
             const costosConcentrado = consumos[0]?.totalCostos || 0;
             const cantidadConcentrado = consumos[0]?.cantidadTotal || 0;
             const otrosGastos = gastosTotales[0]?.total || 0;
+            const costosVacunas = vacunaciones[0]?.totalCosto || 0;
+            const costosOtrosConsumosTotal = otrosConsumosData[0]?.totalCosto || 0;
+            const totalMuertas = mortalidades[0]?.totalMuertas || 0;
             const ingresos = ventas[0]?.totalIngresos || 0;
             const cerdosVendidos = ventas[0]?.totalCerdos || 0;
             const pesoVendido = ventas[0]?.totalPeso || 0;
-            const costosTotales = costosConcentrado + otrosGastos;
+            const costosTotales = costosConcentrado + otrosGastos + costosVacunas + costosOtrosConsumosTotal;
             const utilidad = ingresos - costosTotales;
             const margen = ingresos > 0 ? (utilidad / ingresos) * 100 : 0;
             const costoPorCerdo = lote.cantidadInicial > 0 ? costosTotales / lote.cantidadInicial : 0;
@@ -78,11 +96,19 @@ exports.reportesController = {
                 },
                 costos: {
                     concentrado: { total: costosConcentrado, cantidad: cantidadConcentrado },
+                    vacunas: { total: costosVacunas },
+                    otrosConsumosTotal: { total: costosOtrosConsumosTotal },
                     otrosGastos: {
                         total: otrosGastos,
                         porCategoria: Object.fromEntries(gastosPorCategoria.map((g) => [g._id, g.total])),
                     },
                     totales: costosTotales,
+                },
+                mortalidad: {
+                    totalMuertas,
+                    cerdosIniciales: lote.cantidadInicial,
+                    cerdosSobrevivientes: lote.cantidadInicial - totalMuertas,
+                    tasaMortalidad: lote.cantidadInicial > 0 ? ((totalMuertas / lote.cantidadInicial) * 100).toFixed(2) : '0',
                 },
                 resultado: {
                     utilidad,
@@ -107,7 +133,7 @@ exports.reportesController = {
                 return res.status(400).json({ error: 'empresaId requerido' });
             const empresaOid = new mongoose_1.default.Types.ObjectId(empresaId);
             const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-            const [lotesActivos, totalAnimales, costosDelMes, costosConcentradoDelMes, ingresosDelMes] = await Promise.all([
+            const [lotesActivos, totalAnimales, costosDelMes, costosConcentradoDelMes, costosVacunasDelMes, costosOtrosConsumosDelMes, ingresosDelMes, totalMortalidadesDelMes, registrosVacunacionDelMes] = await Promise.all([
                 Lote_1.Lote.countDocuments({ empresaId, estado: 'activo' }),
                 Lote_1.Lote.aggregate([
                     { $match: { empresaId: empresaOid, estado: 'activo' } },
@@ -121,18 +147,41 @@ exports.reportesController = {
                     { $match: { empresaId: empresaOid, fecha: { $gte: startOfMonth } } },
                     { $group: { _id: null, total: { $sum: '$costoTotal' } } },
                 ]),
+                VacunacionLote_1.default.aggregate([
+                    { $match: { empresaId: empresaOid, fecha: { $gte: startOfMonth } } },
+                    { $group: { _id: null, total: { $sum: { $multiply: ['$precioUnitario', '$cantidadAplicada'] } } } },
+                ]),
+                OtroConsumo_1.default.aggregate([
+                    { $match: { empresaId: empresaOid, fecha: { $gte: startOfMonth } } },
+                    { $group: { _id: null, total: { $sum: '$costoTotal' } } },
+                ]),
                 VentaRegistro_1.default.aggregate([
                     { $match: { empresaId: empresaOid, fechaVenta: { $gte: startOfMonth } } },
                     { $group: { _id: null, total: { $sum: '$ingresoTotal' } } },
                 ]),
+                MortalidadLote_1.default.aggregate([
+                    { $match: { empresaId: empresaOid, fecha: { $gte: startOfMonth } } },
+                    { $group: { _id: null, total: { $sum: '$cantidadMuertas' } } },
+                ]),
+                VacunacionLote_1.default.countDocuments({ empresaId, fecha: { $gte: startOfMonth } }),
             ]);
-            const totalCostos = (costosDelMes[0]?.total || 0) + (costosConcentradoDelMes[0]?.total || 0);
+            const totalCostos = (costosDelMes[0]?.total || 0) + (costosConcentradoDelMes[0]?.total || 0) + (costosVacunasDelMes[0]?.total || 0) + (costosOtrosConsumosDelMes[0]?.total || 0);
             res.json({
                 lotesActivos,
                 totalAnimalesActivos: totalAnimales[0]?.total || 0,
-                costosDelMes: totalCostos,
-                ingresosDelMes: ingresosDelMes[0]?.total || 0,
-                utilidadDelMes: (ingresosDelMes[0]?.total || 0) - totalCostos,
+                costosDelMes: Math.round(totalCostos * 100) / 100,
+                desgloseCostos: {
+                    gastosAdicionales: Math.round((costosDelMes[0]?.total || 0) * 100) / 100,
+                    concentrados: Math.round((costosConcentradoDelMes[0]?.total || 0) * 100) / 100,
+                    vacunas: Math.round((costosVacunasDelMes[0]?.total || 0) * 100) / 100,
+                    otrosConsumosTotal: Math.round((costosOtrosConsumosDelMes[0]?.total || 0) * 100) / 100,
+                },
+                ingresosDelMes: Math.round((ingresosDelMes[0]?.total || 0) * 100) / 100,
+                utilidadDelMes: Math.round(((ingresosDelMes[0]?.total || 0) - totalCostos) * 100) / 100,
+                mortalidadDelMes: {
+                    totalMuertas: totalMortalidadesDelMes[0]?.total || 0,
+                },
+                vacunacionesDelMes: registrosVacunacionDelMes,
             });
         }
         catch (error) {
@@ -156,42 +205,67 @@ exports.reportesController = {
             }
             if (concentradoTipoId)
                 matchQuery.concentradoTipoId = new mongoose_1.default.Types.ObjectId(concentradoTipoId);
-            const consumoPorDia = await ConsumoRegistro_1.default.aggregate([
+            // Get consumo diario from alimento (ConsumoRegistro)
+            const alimentoPorDia = await ConsumoRegistro_1.default.aggregate([
                 { $match: matchQuery },
-                { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$fecha' } }, cantidadTotal: { $sum: '$cantidad' }, costoTotal: { $sum: '$costoTotal' }, registros: { $sum: 1 } } },
+                { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$fecha' } }, cantidadAlimento: { $sum: '$cantidad' }, costoAlimento: { $sum: '$costoTotal' }, registrosAlimento: { $sum: 1 } } },
                 { $sort: { _id: 1 } },
             ]);
+            // Get consumo diario from otros consumos (OtroConsumo)
+            const otrosMatchQuery = { empresaId: empresaOid };
+            if (fechaDesde || fechaHasta) {
+                otrosMatchQuery.fecha = {};
+                if (fechaDesde)
+                    otrosMatchQuery.fecha.$gte = new Date(fechaDesde);
+                if (fechaHasta)
+                    otrosMatchQuery.fecha.$lte = new Date(fechaHasta);
+            }
+            // Note: OtroConsumo does not have concentradoTipoId, so we ignore that filter for now.
+            const otrosPorDia = await OtroConsumo_1.default.aggregate([
+                { $match: otrosMatchQuery },
+                { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$fecha' } }, cantidadOtros: { $sum: '$cantidad' }, registrosOtros: { $sum: 1 } } },
+                { $sort: { _id: 1 } },
+            ]);
+            // Combine by date
+            const consumoPorDiaMap = new Map();
+            alimentoPorDia.forEach((item) => {
+                consumoPorDiaMap.set(item._id, {
+                    fecha: item._id,
+                    cantidadAlimento: item.cantidadAlimento,
+                    costoAlimento: item.costoAlimento,
+                    cantidadOtros: 0,
+                    registrosAlimento: item.registrosAlimento,
+                    registrosOtros: 0,
+                });
+            });
+            otrosPorDia.forEach((item) => {
+                const existing = consumoPorDiaMap.get(item._id);
+                if (existing) {
+                    existing.cantidadOtros = item.cantidadOtros;
+                    existing.registrosOtros = item.registrosOtros;
+                }
+                else {
+                    consumoPorDiaMap.set(item._id, {
+                        fecha: item._id,
+                        cantidadAlimento: 0,
+                        costoAlimento: 0,
+                        cantidadOtros: item.cantidadOtros,
+                        registrosAlimento: 0,
+                        registrosOtros: item.registrosOtros,
+                    });
+                }
+            });
+            // Convert map to array and compute totals
+            const consumoPorDia = Array.from(consumoPorDiaMap.values()).map((item) => ({
+                fecha: item.fecha,
+                cantidadTotal: item.cantidadAlimento + item.cantidadOtros,
+                costoTotal: item.costoAlimento, // assuming otros consumos have no cost
+                registros: item.registrosAlimento + item.registrosOtros,
+            })).sort((a, b) => a.fecha.localeCompare(b.fecha));
             res.json(consumoPorDia);
         }
         catch (error) {
             res.status(500).json({ error: 'Error al obtener consumo diario' });
-        }
-    },
-    async costoAcumulado(req, res) {
-        try {
-            const empresaId = getEmpresaId(req);
-            if (!empresaId)
-                return res.status(400).json({ error: 'empresaId requerido' });
-            const empresaOid = new mongoose_1.default.Types.ObjectId(empresaId);
-            const loteId = new mongoose_1.default.Types.ObjectId(req.params.loteId);
-            const lote = await Lote_1.Lote.findOne({ _id: loteId, empresaId });
-            if (!lote)
-                return res.status(404).json({ error: 'Lote no encontrado' });
-            const costoAcumulado = await ConsumoRegistro_1.default.aggregate([
-                { $match: { loteId, empresaId: empresaOid } },
-                { $sort: { fecha: 1 } },
-                { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$fecha' } }, diario: { $sum: '$costoTotal' }, cantidadDiaria: { $sum: '$cantidad' } } },
-                { $sort: { _id: 1 } },
-            ]);
-            let acumulado = 0;
-            const resultado = costoAcumulado.map((r) => {
-                acumulado += r.diario;
-                return { fecha: r._id, diario: r.diario, cantidad: r.cantidadDiaria, acumulado: Math.round(acumulado * 100) / 100 };
-            });
-            res.json(resultado);
-        }
-        catch (error) {
-            res.status(500).json({ error: 'Error al calcular costo acumulado' });
         }
     },
     async exportar(req, res) {
@@ -657,6 +731,183 @@ exports.reportesController = {
         catch (error) {
             console.error('Error al exportar:', error);
             res.status(500).json({ error: 'Error al exportar datos', message: error instanceof Error ? error.message : undefined });
+        }
+    },
+    async costoAcumulado(req, res) {
+        try {
+            const empresaId = getEmpresaId(req);
+            if (!empresaId)
+                return res.status(400).json({ error: 'empresaId requerido' });
+            const empresaOid = new mongoose_1.default.Types.ObjectId(empresaId);
+            const loteId = new mongoose_1.default.Types.ObjectId(req.params.loteId);
+            const lote = await Lote_1.Lote.findOne({ _id: loteId, empresaId });
+            if (!lote)
+                return res.status(404).json({ error: 'Lote no encontrado' });
+            // Get diario cost and quantity from alimento (ConsumoRegistro)
+            const alimentoDiario = await ConsumoRegistro_1.default.aggregate([
+                { $match: { loteId, empresaId: empresaOid } },
+                { $sort: { fecha: 1 } },
+                { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$fecha' } }, diario: { $sum: '$costoTotal' }, cantidadAlimento: { $sum: '$cantidad' } } },
+                { $sort: { _id: 1 } },
+            ]);
+            // Get diario quantity from otros consumos (OtroConsumo)
+            const otrosDiario = await OtroConsumo_1.default.aggregate([
+                { $match: { loteId, empresaId: empresaOid } },
+                { $sort: { fecha: 1 } },
+                { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$fecha' } }, cantidadOtros: { $sum: '$cantidad' } } },
+                { $sort: { _id: 1 } },
+            ]);
+            // Combine by date
+            const costoAcumuladoMap = new Map();
+            alimentoDiario.forEach((item) => {
+                costoAcumuladoMap.set(item._id, {
+                    fecha: item._id,
+                    diario: item.diario, // cost from alimento
+                    cantidadAlimento: item.cantidadAlimento,
+                    cantidadOtros: 0,
+                });
+            });
+            otrosDiario.forEach((item) => {
+                const existing = costoAcumuladoMap.get(item._id);
+                if (existing) {
+                    existing.cantidadOtros = item.cantidadOtros;
+                }
+                else {
+                    costoAcumuladoMap.set(item._id, {
+                        fecha: item._id,
+                        diario: 0, // no cost from otros
+                        cantidadAlimento: 0,
+                        cantidadOtros: item.cantidadOtros,
+                    });
+                }
+            });
+            // Convert map to array and compute accumulated cost and total quantity
+            let acumulado = 0;
+            const resultado = Array.from(costoAcumuladoMap.values())
+                .sort((a, b) => a.fecha.localeCompare(b.fecha))
+                .map((item) => {
+                acumulado += item.diario;
+                return {
+                    fecha: item._id,
+                    diario: item.diario, // daily cost
+                    cantidad: item.cantidadAlimento + item.cantidadOtros, // total daily quantity
+                    acumulado: Math.round(acumulado * 100) / 100, // accumulated cost
+                };
+            });
+            res.json(resultado);
+        }
+        catch (error) {
+            res.status(500).json({ error: 'Error al calcular costo acumulado' });
+        }
+    },
+    async resumenCompletoPorLote(req, res) {
+        try {
+            const empresaId = getEmpresaId(req);
+            if (!empresaId)
+                return res.status(400).json({ error: 'empresaId requerido' });
+            const empresaOid = new mongoose_1.default.Types.ObjectId(empresaId);
+            const loteId = new mongoose_1.default.Types.ObjectId(req.params.loteId);
+            const lote = await Lote_1.Lote.findOne({ _id: loteId, empresaId });
+            if (!lote)
+                return res.status(404).json({ error: 'Lote no encontrado' });
+            const [consumos, vacunaciones, otrosConsumosRecords, mortalidades, gastos, ventas] = await Promise.all([
+                ConsumoRegistro_1.default.find({ loteId, empresaId })
+                    .populate('concentradoTipoId', 'nombre')
+                    .sort({ fecha: 1 })
+                    .lean(),
+                VacunacionLote_1.default.find({ loteId, empresaId }).sort({ fecha: 1 }).lean(),
+                OtroConsumo_1.default.find({ loteId, empresaId }).sort({ fecha: 1 }).lean(),
+                MortalidadLote_1.default.find({ loteId, empresaId }).sort({ fecha: 1 }).lean(),
+                GastoAdicional_1.default.find({ loteId, empresaId }).sort({ fecha: 1 }).lean(),
+                VentaRegistro_1.default.find({ loteId, empresaId }).sort({ fechaVenta: 1 }).lean(),
+            ]);
+            // Calcular totales
+            const totalConsumosAlimento = consumos.reduce((sum, c) => sum + (Number(c.costoTotal) || 0), 0);
+            const totalVacunas = vacunaciones.reduce((sum, v) => {
+                const precio = Number(v.precioUnitario) || 0;
+                const cantidad = Number(v.cantidadAplicada) || 0;
+                return sum + (precio * cantidad);
+            }, 0);
+            const totalOtrosConsumos = otrosConsumosRecords.reduce((sum, o) => sum + (Number(o.costoTotal) || 0), 0);
+            const totalMortalidades = mortalidades.reduce((sum, m) => sum + (Number(m.cantidadMuertas) || 0), 0);
+            const totalGastos = gastos.reduce((sum, g) => sum + (Number(g.monto) || 0), 0);
+            const totalIngresos = ventas.reduce((sum, v) => sum + (Number(v.ingresoTotal) || 0), 0);
+            const costosTotales = Math.round((totalConsumosAlimento + totalVacunas + totalOtrosConsumos + totalGastos) * 100) / 100;
+            const utilidad = Math.round((totalIngresos - costosTotales) * 100) / 100;
+            const margen = totalIngresos > 0 ? (((utilidad / totalIngresos) * 100)).toFixed(2) : '0.00';
+            res.json({
+                lote: {
+                    _id: lote._id,
+                    nombre: lote.nombre,
+                    fechaIngreso: lote.fechaIngreso,
+                    estado: lote.estado,
+                    cantidadInicial: lote.cantidadInicial,
+                    cantidadActual: lote.cantidadActual,
+                    cantidadSalida: lote.cantidadSalida,
+                },
+                costos: {
+                    consumosAlimento: {
+                        total: Math.round(totalConsumosAlimento * 100) / 100,
+                        registros: consumos.length,
+                        items: consumos.map((c) => ({
+                            fecha: fmtDate(c.fecha),
+                            tipo: c.concentradoTipoId?.nombre,
+                            cantidad: c.cantidad,
+                            precioUnitario: c.precioUnitario,
+                            costoTotal: c.costoTotal,
+                        })),
+                    },
+                    vacunas: {
+                        total: Math.round(totalVacunas * 100) / 100,
+                        registros: vacunaciones.length,
+                        items: vacunaciones.map((v) => ({
+                            fecha: fmtDate(v.fecha),
+                            vacuna: v.vacuna,
+                            cantidadAplicada: v.cantidadAplicada,
+                            precioUnitario: v.precioUnitario,
+                            costoTotal: v.precioUnitario * v.cantidadAplicada,
+                        })),
+                    },
+                    otrosConsumosDetalle: {
+                        total: Math.round(totalOtrosConsumos * 100) / 100,
+                        registros: otrosConsumosRecords.length,
+                        items: otrosConsumosRecords.map((o) => ({
+                            fecha: fmtDate(o.fecha),
+                            tipo: o.tipo,
+                            cantidad: o.cantidad,
+                            precioUnitario: o.precioUnitario,
+                            costoTotal: o.costoTotal,
+                        })),
+                    },
+                    gastosAdicionales: {
+                        total: Math.round(totalGastos * 100) / 100,
+                        registros: gastos.length,
+                    },
+                    totalCostos: Math.round(costosTotales * 100) / 100,
+                },
+                mortalidad: {
+                    totalMuertas: totalMortalidades,
+                    tasaMortalidad: lote.cantidadInicial > 0 ? ((totalMortalidades / lote.cantidadInicial) * 100).toFixed(2) : '0',
+                    registros: mortalidades.length,
+                    items: mortalidades.map((m) => ({
+                        fecha: fmtDate(m.fecha),
+                        cantidad: m.cantidadMuertas,
+                        motivo: m.motivo,
+                    })),
+                },
+                ingresos: {
+                    total: Math.round(totalIngresos * 100) / 100,
+                    registros: ventas.length,
+                },
+                resultado: {
+                    utilidad: Math.round(utilidad * 100) / 100,
+                    margen: margen,
+                    estado: utilidad > 0 ? 'rentable' : utilidad < 0 ? 'perdida' : 'equilibrio',
+                },
+            });
+        }
+        catch (error) {
+            res.status(500).json({ error: 'Error al calcular resumen completo', message: error instanceof Error ? error.message : undefined });
         }
     },
 };

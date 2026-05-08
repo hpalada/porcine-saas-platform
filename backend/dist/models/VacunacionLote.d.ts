@@ -4,10 +4,12 @@ export interface IVacunacionLote extends Document {
     loteId: Types.ObjectId;
     vacuna: string;
     fecha: Date;
-    dosis: string;
+    dosis?: string;
     aplicadoPor?: string;
     observaciones?: string;
     proximaFecha?: Date;
+    precioUnitario: number;
+    cantidadAplicada: number;
     createdAt: Date;
     updatedAt: Date;
 }

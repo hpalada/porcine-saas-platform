@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { connectDB } from './config/database';
+import { runMigrations } from './migrations';
 import apiRoutes from './routes/api';
 import authRoutes from './routes/auth.routes';
 import superadminRoutes from './routes/superadmin.routes';
@@ -69,6 +70,7 @@ app.use((req, res) => {
 async function start() {
   try {
     await connectDB();
+    await runMigrations();
     app.listen(PORT, () => {
       console.log(`🚀 Server running on http://localhost:${PORT}`);
       console.log(`📊 Environment: ${process.env.NODE_ENV}`);

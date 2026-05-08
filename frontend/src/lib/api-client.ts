@@ -137,6 +137,7 @@ export const api = {
   reportes: {
     dashboard: () => safeFetch(`${API_BASE}/reportes/dashboard`, { headers: authHeaders() }).then(handleResponse),
     rentabilidad: (loteId: string) => safeFetch(`${API_BASE}/reportes/rentabilidad/${loteId}`, { headers: authHeaders() }).then(handleResponse),
+    resumenCompleto: (loteId: string) => safeFetch(`${API_BASE}/reportes/resumen-completo/${loteId}`, { headers: authHeaders() }).then(handleResponse),
     consumoDiario: (params?: Record<string, string>) => {
       const qs = params ? '?' + new URLSearchParams(params).toString() : '';
       return safeFetch(`${API_BASE}/reportes/consumo-diario${qs}`, { headers: authHeaders() }).then(handleResponse);
@@ -144,5 +145,38 @@ export const api = {
     costoAcumulado: (loteId: string) => safeFetch(`${API_BASE}/reportes/costo-acumulado/${loteId}`, { headers: authHeaders() }).then(handleResponse),
     exportar: (loteId: string, formato: 'excel' | 'pdf' = 'excel') =>
       safeFetch(`${API_BASE}/reportes/exportar/${loteId}?formato=${formato}`, { headers: authHeaders() }).then(r => r.blob()),
+  },
+
+  // ============== OTROS CONSUMOS ==============
+  otrosConsumos: {
+    list: (params?: Record<string, string>) => {
+      const qs = params ? '?' + new URLSearchParams(params).toString() : '';
+      return safeFetch(`${API_BASE}/otros-consumos${qs}`, { headers: authHeaders() }).then(handleResponse);
+    },
+    porLote: (loteId: string) => safeFetch(`${API_BASE}/otros-consumos/lote/${loteId}`, { headers: authHeaders() }).then(handleResponse),
+    resumenPorLote: (loteId: string) => safeFetch(`${API_BASE}/otros-consumos/resumen/${loteId}`, { headers: authHeaders() }).then(handleResponse),
+    create: (data: any) => safeFetch(`${API_BASE}/otros-consumos`, { method: 'POST', headers: authHeaders(), body: JSON.stringify(data) }).then(handleResponse),
+    update: (id: string, data: any) => safeFetch(`${API_BASE}/otros-consumos/${id}`, { method: 'PUT', headers: authHeaders(), body: JSON.stringify(data) }).then(handleResponse),
+    delete: (id: string) => safeFetch(`${API_BASE}/otros-consumos/${id}`, { method: 'DELETE', headers: authHeaders() }).then(handleResponse),
+  },
+
+  // ============== MORTALIDADES ==============
+  mortalidades: {
+    list: (params?: Record<string, string>) => {
+      const qs = params ? '?' + new URLSearchParams(params).toString() : '';
+      return safeFetch(`${API_BASE}/mortalidades${qs}`, { headers: authHeaders() }).then(handleResponse);
+    },
+    porLote: (loteId: string) => safeFetch(`${API_BASE}/mortalidades/lote/${loteId}`, { headers: authHeaders() }).then(handleResponse),
+    crear: (data: any) => safeFetch(`${API_BASE}/mortalidades`, { method: 'POST', headers: authHeaders(), body: JSON.stringify(data) }).then(handleResponse),
+    actualizar: (id: string, data: any) => safeFetch(`${API_BASE}/mortalidades/${id}`, { method: 'PUT', headers: authHeaders(), body: JSON.stringify(data) }).then(handleResponse),
+    eliminar: (id: string) => safeFetch(`${API_BASE}/mortalidades/${id}`, { method: 'DELETE', headers: authHeaders() }).then(handleResponse),
+  },
+
+  // ============== EMPRESA ==============
+  empresa: {
+    get: () => safeFetch(`${API_BASE}/empresa`, { headers: authHeaders() }).then(handleResponse),
+    update: (data: any) => safeFetch(`${API_BASE}/empresa`, { method: 'PUT', headers: authHeaders(), body: JSON.stringify(data) }).then(handleResponse),
+    cancelarSuscripcion: () => safeFetch(`${API_BASE}/empresa/cancelar-suscripcion`, { method: 'POST', headers: authHeaders() }).then(handleResponse),
+    reactivarSuscripcion: (empresaId: string) => safeFetch(`${API_BASE}/empresa/reactivar-suscripcion`, { method: 'POST', headers: authHeaders(), body: JSON.stringify({ empresaId }) }).then(handleResponse),
   },
 };

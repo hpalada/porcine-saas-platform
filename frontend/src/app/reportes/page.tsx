@@ -3,24 +3,19 @@
 import { useState } from 'react';
 import useSWR from 'swr';
 import { Card } from '@/components/ui/Card';
-import { Button } from '@/components/ui/Button';
 import { Select } from '@/components/ui/Select';
 import { Badge } from '@/components/ui/Badge';
+import { Table, TableHeader, TableBody, TableRow, TableCell, TableHead } from '@/components/ui/Table';
 import { api } from '@/lib/api-client';
 import { formatCurrency, formatNumber, formatDate } from '@/lib/utils';
-import { IconTrendingUp, IconTrendingDown, IconMinus, IconDownload, IconBarChart } from '@/components/icons';
-
-const CATEGORIAS_LABEL: Record<string, string> = {
-  lechon: 'Precio Lechón', trabajador: 'Trabajadores', medicina: 'Medicina',
-  transporte: 'Transporte', mano_obra: 'Mano de Obra', servicios: 'Servicios', otro: 'Otro',
-};
+import { IconTrendingUp, IconTrendingDown, IconMinus, IconDownload, IconBarChart, IconSyringe, IconSkull } from '@/components/icons';
 
 export default function ReportesPage() {
   const [loteSeleccionado, setLoteSeleccionado] = useState('');
   const { data: lotes = [] } = useSWR('/api/lotes', () => api.lotes.list());
   const { data: reporte } = useSWR(
-    loteSeleccionado ? `/api/reportes/rentabilidad/${loteSeleccionado}` : null,
-    () => api.reportes.rentabilidad(loteSeleccionado)
+    loteSeleccionado ? `/api/reportes/resumen-completo/${loteSeleccionado}` : null,
+    () => api.reportes.resumenCompleto(loteSeleccionado)
   );
 
   const [exportando, setExportando] = useState<'excel' | 'pdf' | null>(null);
@@ -47,11 +42,19 @@ export default function ReportesPage() {
 
   const r = reporte as any;
 
+  if (loteSeleccionado && r) {
+    console.log('📊 REPORTE COMPLETO:', r);
+    console.log('✅ Costos totales:', r.costos?.totalCostos);
+    console.log('✅ Ingresos totales:', r.ingresos?.total);
+    console.log('✅ Vacunas:', r.costos?.vacunas);
+    console.log('✅ Mortalidad:', r.mortalidad);
+  }
+
   return (
     <div className="space-y-5">
       <div>
         <h1 className="text-2xl md:text-3xl font-bold text-white">Reportes</h1>
-        <p className="text-zinc-400 text-sm mt-0.5">Análisis de rentabilidad por lote</p>
+        <p className="text-zinc-400 text-sm mt-0.5">Análisis completo por lote</p>
       </div>
 
       <Card>
@@ -89,7 +92,7 @@ export default function ReportesPage() {
         </div>
       </Card>
 
-      {r ? (
+      {r && r.lote ? (
         <>
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-5 bg-zinc-900 border border-zinc-800 rounded-xl">
             <div>
@@ -106,21 +109,19 @@ export default function ReportesPage() {
             </Badge>
           </div>
 
+          {/* Resumen de Costos y Resultados */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Card title="Ingresos Totales">
               <p className="text-3xl font-bold text-green-400 mt-1">{formatCurrency(r.ingresos.total)}</p>
-              <div className="mt-4 space-y-2 text-sm">
-                <div className="flex justify-between"><span className="text-zinc-400">Cerdos vendidos</span><span className="text-white">{formatNumber(r.ingresos.cerdosVendidos)}</span></div>
-                <div className="flex justify-between"><span className="text-zinc-400">Peso total</span><span className="text-white">{formatNumber(r.ingresos.pesoTotal)} kg</span></div>
-                <div className="flex justify-between"><span className="text-zinc-400">Precio promedio</span><span className="text-white">{formatCurrency(r.ingresos.precioPromedio)}/kg</span></div>
-              </div>
             </Card>
 
             <Card title="Costos Totales">
-              <p className="text-3xl font-bold text-red-400 mt-1">{formatCurrency(r.costos.totales)}</p>
+              <p className="text-3xl font-bold text-red-400 mt-1">{formatCurrency(r.costos.totalCostos)}</p>
               <div className="mt-4 space-y-2 text-sm">
-                <div className="flex justify-between"><span className="text-zinc-400">Concentrado</span><span className="text-white">{formatCurrency(r.costos.concentrado.total)}</span></div>
-                <div className="flex justify-between"><span className="text-zinc-400">Otros gastos</span><span className="text-white">{formatCurrency(r.costos.otrosGastos.total)}</span></div>
+                <div className="flex justify-between"><span className="text-zinc-400">Alimento</span><span className="text-white">{formatCurrency(r.costos.consumosAlimento.total)}</span></div>
+                <div className="flex justify-between"><span className="text-zinc-400">Vacunas</span><span className="text-white">{formatCurrency(r.costos.vacunas.total)}</span></div>
+                <div className="flex justify-between"><span className="text-zinc-400">Otros consumos</span><span className="text-white">{formatCurrency(r.costos.otrosConsumosDetalle.total)}</span></div>
+                <div className="flex justify-between"><span className="text-zinc-400">Gastos adicionales</span><span className="text-white">{formatCurrency(r.costos.gastosAdicionales.total)}</span></div>
               </div>
             </Card>
 
@@ -130,30 +131,105 @@ export default function ReportesPage() {
               </p>
               <div className="mt-4 space-y-2 text-sm">
                 <div className="flex justify-between"><span className="text-zinc-400">Margen</span><span className="text-white">{r.resultado.margen}%</span></div>
-                <div className="flex justify-between"><span className="text-zinc-400">Costo/cerdo</span><span className="text-white">{formatCurrency(r.indicadores.costoPorCerdo)}</span></div>
-                <div className="flex justify-between"><span className="text-zinc-400">Costo/kg</span><span className="text-white">{formatCurrency(r.indicadores.costoPorKg)}</span></div>
               </div>
             </Card>
           </div>
 
-          {Object.keys(r.costos.otrosGastos.porCategoria).length > 0 && (
-            <Card title="Desglose de Gastos">
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 mt-1">
-                {Object.entries(r.costos.otrosGastos.porCategoria).map(([cat, monto]) => (
-                  <div key={cat} className="p-3 bg-zinc-800/50 rounded-lg">
-                    <p className="text-xs text-zinc-500 uppercase tracking-wide">{CATEGORIAS_LABEL[cat] || cat}</p>
-                    <p className="text-base font-bold text-white mt-1">{formatCurrency(monto as number)}</p>
+          {/* VACUNACIONES */}
+          <Card title={`Vacunaciones (${r.costos?.vacunas?.registros || 0})`}>
+            {r.costos?.vacunas?.items && r.costos.vacunas.items.length > 0 ? (
+              <>
+                <div className="overflow-x-auto mt-3">
+                  <table className="w-full text-sm min-w-[600px]">
+                    <thead>
+                      <TableRow>
+                        <TableHead>Fecha</TableHead>
+                        <TableHead>Vacuna</TableHead>
+                        <TableHead align="center">Cantidad Aplicada</TableHead>
+                        <TableHead align="right">Precio Unitario</TableHead>
+                        <TableHead align="right">Costo Total</TableHead>
+                      </TableRow>
+                    </thead>
+                    <TableBody>
+                      {r.costos.vacunas.items.map((v: any, idx: number) => (
+                        <TableRow key={idx}>
+                          <TableCell className="text-zinc-300 text-sm">{v.fecha}</TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-1.5">
+                              <IconSyringe size={12} className="text-blue-400 flex-shrink-0" />
+                              <span className="text-zinc-200 text-sm">{v.vacuna}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell align="center" className="text-zinc-300 text-sm font-medium">{v.cantidadAplicada}</TableCell>
+                          <TableCell align="right" className="text-zinc-300 text-sm">{formatCurrency(v.precioUnitario)}</TableCell>
+                          <TableCell align="right" className="text-green-400 text-sm font-semibold">{formatCurrency(v.costoTotal)}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </table>
+                </div>
+                <div className="mt-4 pt-3 border-t border-zinc-800 flex justify-between text-sm">
+                  <span className="text-zinc-400">Total Vacunas:</span>
+                  <span className="font-semibold text-green-400">{formatCurrency(r.costos.vacunas.total)}</span>
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-zinc-400 py-4">No hay registros de vacunaciones</p>
+            )}
+          </Card>
+
+          {/* MORTALIDADES */}
+          <Card title={`Mortalidades (${r.mortalidad?.registros || 0})`}>
+            {r.mortalidad?.items && r.mortalidad.items.length > 0 ? (
+              <>
+                <div className="overflow-x-auto mt-3">
+                  <table className="w-full text-sm min-w-[500px]">
+                    <thead>
+                      <TableRow>
+                        <TableHead>Fecha</TableHead>
+                        <TableHead align="center">Cantidad</TableHead>
+                        <TableHead>Causa/Motivo</TableHead>
+                      </TableRow>
+                    </thead>
+                    <TableBody>
+                      {r.mortalidad.items.map((m: any, idx: number) => (
+                        <TableRow key={idx}>
+                          <TableCell className="text-zinc-300 text-sm">{m.fecha}</TableCell>
+                          <TableCell align="center">
+                            <span className="font-semibold text-red-400">{m.cantidad}</span>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-1.5">
+                              <IconSkull size={12} className="text-red-400 flex-shrink-0" />
+                              <span className="text-zinc-200 text-sm">{m.motivo}</span>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </table>
+                </div>
+                <div className="mt-4 pt-3 border-t border-zinc-800 space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-zinc-400">Total Muertas:</span>
+                    <span className="font-semibold text-red-400">{r.mortalidad.totalMuertas}</span>
                   </div>
-                ))}
-              </div>
-            </Card>
-          )}
+                  <div className="flex justify-between">
+                    <span className="text-zinc-400">Tasa de Mortalidad:</span>
+                    <span className="font-semibold text-red-400">{r.mortalidad.tasaMortalidad}%</span>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-zinc-400 py-4">No hay registros de mortalidades</p>
+            )}
+          </Card>
         </>
       ) : (
         <Card>
           <div className="text-center py-16 text-zinc-400">
             <IconBarChart size={44} className="mx-auto mb-3 text-zinc-700" />
-            <p>Selecciona un lote para ver el análisis de rentabilidad</p>
+            <p>Selecciona un lote para ver el análisis completo</p>
           </div>
         </Card>
       )}

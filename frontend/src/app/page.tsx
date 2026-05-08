@@ -6,7 +6,7 @@ import { Card, StatCard } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { formatCurrency, formatNumber, formatDate } from '@/lib/utils';
 import { api } from '@/lib/api-client';
-import { IconPackage, IconAlertTriangle, IconUtensils, IconWheat, IconUser, IconArrowRight } from '@/components/icons';
+import { IconPackage, IconAlertTriangle, IconUtensils, IconWheat, IconUser, IconArrowRight, IconSkull, IconSyringe, IconTrendingUp } from '@/components/icons';
 import { useAuthStore } from '@/lib/auth-store';
 
 export default function Dashboard() {
@@ -14,6 +14,7 @@ export default function Dashboard() {
   const { data: lotes = [] } = useSWR('/api/lotes', () => api.lotes.list());
   const { data: inventario = [] } = useSWR('/api/inventario', () => api.inventario.stockActual());
   const { data: consumos = [] } = useSWR('/api/consumos?limite=5', () => api.consumos.list({ limite: '5' }));
+  const { data: dashboardData = {} } = useSWR('/api/reportes/dashboard', () => api.reportes.dashboard());
 
   const loading = !lotes || !inventario;
 
@@ -29,6 +30,7 @@ export default function Dashboard() {
   const lotesFinalizados = (lotes as any[]).filter((l) => l.estado === 'finalizado');
   const stockBajo = (inventario as any[]).filter((i) => i.stock < 10);
   const totalAnimales = lotesActivos.reduce((acc: number, l: any) => acc + (l.cantidadActual || 0), 0);
+  const totalAnimalesInicial = lotesActivos.reduce((acc: number, l: any) => acc + (l.cantidadInicial || 0), 0);
 
   return (
     <div className="space-y-6">
@@ -52,6 +54,22 @@ export default function Dashboard() {
         </Link>
         <Link href="/inventario" className="block h-full transition-transform hover:-translate-y-0.5">
           <StatCard title="Stock Crítico" value={stockBajo.length} icon={<IconAlertTriangle size={22} className="text-red-500" />} />
+        </Link>
+      </div>
+
+      {/* Estadísticas del mes */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-5 auto-rows-fr">
+        <Link href="/reportes" className="block h-full transition-transform hover:-translate-y-0.5">
+          <StatCard title="Costos Mes" value={formatCurrency((dashboardData as any)?.costosDelMes || 0)} icon={<IconTrendingUp size={22} className="text-red-500" />} />
+        </Link>
+        <Link href="/mortalidades" className="block h-full transition-transform hover:-translate-y-0.5">
+          <StatCard title="Mortalidades Mes" value={(dashboardData as any)?.mortalidadDelMes?.totalMuertas || 0} icon={<IconSkull size={22} className="text-red-400" />} />
+        </Link>
+        <Link href="/vacunaciones" className="block h-full transition-transform hover:-translate-y-0.5">
+          <StatCard title="Vacunaciones Mes" value={(dashboardData as any)?.vacunacionesDelMes || 0} icon={<IconSyringe size={22} className="text-blue-400" />} />
+        </Link>
+        <Link href="/reportes" className="block h-full transition-transform hover:-translate-y-0.5">
+          <StatCard title="Utilidad Mes" value={formatCurrency((dashboardData as any)?.utilidadDelMes || 0)} icon={<IconTrendingUp size={22} className="text-green-500" />} />
         </Link>
       </div>
 
@@ -182,8 +200,8 @@ export default function Dashboard() {
           <p className="text-2xl font-bold mt-1 text-white">{lotesFinalizados.length}</p>
         </Link>
         <Link href="/lotes" className="block h-full bg-zinc-900 border border-zinc-800 rounded-xl p-4 transition-colors hover:border-zinc-700">
-          <p className="text-xs uppercase tracking-wide text-zinc-500">Total Animales Inicial</p>
-          <p className="text-2xl font-bold mt-1 text-white">{formatNumber((lotes as any[]).reduce((a: number, l: any) => a + (l.cantidadInicial || 0), 0))}</p>
+          <p className="text-xs uppercase tracking-wide text-zinc-500">Total Animales Inicial (Activos)</p>
+          <p className="text-2xl font-bold mt-1 text-white">{formatNumber(totalAnimalesInicial)}</p>
         </Link>
         <Link href="/ventas" className="block h-full bg-zinc-900 border border-zinc-800 rounded-xl p-4 transition-colors hover:border-zinc-700">
           <p className="text-xs uppercase tracking-wide text-zinc-500">Salidas Totales</p>

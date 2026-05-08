@@ -462,3 +462,13 @@ export function IconArrowRight({ size = 18, className = '' }: IconProps) {
     </svg>
   );
 }
+
+export function IconSkull({ size = 18, className = '' }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <circle cx="8" cy="10" r="2" />
+      <circle cx="16" cy="10" r="2" />
+      <path d="M12 21c4.4-1 7-4 7-9V6c0-2-1-4-3-4s-4 1-5 3-2-1-4-1-3 1-3 4v6c0 5 2.6 8 7 9z" />
+    </svg>
+  );
+}

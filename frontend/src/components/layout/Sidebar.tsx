@@ -22,12 +22,14 @@ import {
   IconLogOut,
   IconUser,
   IconSyringe,
+  IconSkull,
 } from '@/components/icons';
 
 const navigation = [
   { name: 'Dashboard', href: '/', icon: IconDashboard },
   { name: 'Lotes', href: '/lotes', icon: IconPackage },
   { name: 'Vacunaciones', href: '/vacunaciones', icon: IconSyringe },
+  { name: 'Mortalidades', href: '/mortalidades', icon: IconSkull },
   { name: 'Concentrados', href: '/concentrados', icon: IconWheat },
   { name: 'Inventario', href: '/inventario', icon: IconClipboard },
   { name: 'Consumos', href: '/consumos', icon: IconUtensils },
