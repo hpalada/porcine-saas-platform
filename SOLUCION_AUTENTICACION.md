@@ -38,13 +38,13 @@ El script te pedirá:
 - App: **Correo**
 - Dispositivo: **Windows** (u otro)
 
-**Paso 3:** Google generará una contraseña como: `abcd efgh ijkl mnop`
+**Paso 3:** Google generará una contraseña de 16 caracteres
 
 **Paso 4:** Edita `backend/.env` y reemplaza:
 
 ```env
 SMTP_USER=tu-email@gmail.com
-SMTP_PASS=abcdefghijklmnop
+SMTP_PASS=YOUR_GMAIL_APP_PASSWORD
 ```
 
 ### PASO 2: Reiniciar el Backend
@@ -158,15 +158,15 @@ Verifica que aparezca:
 
 # ✅ Estos deberían estar configurados
 MONGODB_URI=mongodb://localhost:27017/porcine-saas
-GOOGLE_CLIENT_ID=701950577668-...
-GOOGLE_CLIENT_SECRET=GOCSPX-...
+GOOGLE_CLIENT_ID=YOUR_GOOGLE_CLIENT_ID
+GOOGLE_CLIENT_SECRET=YOUR_GOOGLE_CLIENT_SECRET
 GOOGLE_REDIRECT_URI=http://localhost:3001/api/auth/google/callback
-JWT_SECRET=porcine-saas-super-secret-key-2026
+JWT_SECRET=YOUR_STRONG_SECRET_KEY_HERE
 FRONTEND_URL=http://localhost:3000
 
 # ⚠️ Estos DEBES configurar con tus datos reales
 SMTP_USER=tu-email@gmail.com
-SMTP_PASS=abcd efgh ijkl mnop
+SMTP_PASS=YOUR_GMAIL_APP_PASSWORD
 ```
 
 ---

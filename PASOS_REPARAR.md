@@ -61,7 +61,7 @@ SMTP_PASS=contraseña-de-aplicacion
 
 # Y reemplaza con:
 SMTP_USER=tu-email@gmail.com
-SMTP_PASS=abcdefghijklmnop
+SMTP_PASS=YOUR_GMAIL_APP_PASSWORD
 ```
 
 ---
