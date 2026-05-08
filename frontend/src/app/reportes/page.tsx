@@ -42,13 +42,16 @@ export default function ReportesPage() {
 
   const r = reporte as any;
 
-  if (loteSeleccionado && r) {
-    console.log('📊 REPORTE COMPLETO:', r);
-    console.log('✅ Costos totales:', r.costos?.totalCostos);
-    console.log('✅ Ingresos totales:', r.ingresos?.total);
-    console.log('✅ Vacunas:', r.costos?.vacunas);
-    console.log('✅ Mortalidad:', r.mortalidad);
-  }
+  // Calcular totalCostos localmente como fallback por si el backend retorna 0
+  const totalCostosCalculado = r ? (
+    (r.costos?.consumosAlimento?.total || 0) +
+    (r.costos?.vacunas?.total || 0) +
+    (r.costos?.otrosConsumosDetalle?.total || 0) +
+    (r.costos?.gastosAdicionales?.total || 0)
+  ) : 0;
+  const totalCostos = r?.costos?.totalCostos > 0 ? r.costos.totalCostos : totalCostosCalculado;
+  const utilidad = r ? (r.ingresos?.total || 0) - totalCostos : 0;
+  const margen = r?.ingresos?.total > 0 ? ((utilidad / r.ingresos.total) * 100).toFixed(2) : r?.resultado?.margen || '0.00';
 
   return (
     <div className="space-y-5">
@@ -101,10 +104,10 @@ export default function ReportesPage() {
                 {formatNumber(r.lote.cantidadInicial)} animales iniciales · Ingresó: {formatDate(r.lote.fechaIngreso)}
               </p>
             </div>
-            <Badge variant={r.resultado.estado === 'rentable' ? 'active' : r.resultado.estado === 'perdida' ? 'danger' : 'default'}>
+            <Badge variant={utilidad > 0 ? 'active' : utilidad < 0 ? 'danger' : 'default'}>
               <div className="flex items-center gap-1.5">
-                {r.resultado.estado === 'rentable' ? <IconTrendingUp size={12} /> : r.resultado.estado === 'perdida' ? <IconTrendingDown size={12} /> : <IconMinus size={12} />}
-                {r.resultado.estado.toUpperCase()}
+                {utilidad > 0 ? <IconTrendingUp size={12} /> : utilidad < 0 ? <IconTrendingDown size={12} /> : <IconMinus size={12} />}
+                {utilidad > 0 ? 'RENTABLE' : utilidad < 0 ? 'PÉRDIDA' : 'EQUILIBRIO'}
               </div>
             </Badge>
           </div>
@@ -116,7 +119,7 @@ export default function ReportesPage() {
             </Card>
 
             <Card title="Costos Totales">
-              <p className="text-3xl font-bold text-red-400 mt-1">{formatCurrency(r.costos.totalCostos)}</p>
+              <p className="text-3xl font-bold text-red-400 mt-1">{formatCurrency(totalCostos)}</p>
               <div className="mt-4 space-y-2 text-sm">
                 <div className="flex justify-between"><span className="text-zinc-400">Alimento</span><span className="text-white">{formatCurrency(r.costos.consumosAlimento.total)}</span></div>
                 <div className="flex justify-between"><span className="text-zinc-400">Vacunas</span><span className="text-white">{formatCurrency(r.costos.vacunas.total)}</span></div>
@@ -126,11 +129,11 @@ export default function ReportesPage() {
             </Card>
 
             <Card title="Resultado">
-              <p className={`text-3xl font-bold mt-1 ${r.resultado.utilidad >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                {formatCurrency(r.resultado.utilidad)}
+              <p className={`text-3xl font-bold mt-1 ${utilidad >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                {formatCurrency(utilidad)}
               </p>
               <div className="mt-4 space-y-2 text-sm">
-                <div className="flex justify-between"><span className="text-zinc-400">Margen</span><span className="text-white">{r.resultado.margen}%</span></div>
+                <div className="flex justify-between"><span className="text-zinc-400">Margen</span><span className="text-white">{margen}%</span></div>
               </div>
             </Card>
           </div>

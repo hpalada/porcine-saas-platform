@@ -5,68 +5,46 @@ export async function runMigrations() {
   try {
     console.log('🔄 Iniciando migraciones...');
 
-    // Migración 1: Reparar vacunaciones antiguas sin precioUnitario o cantidadAplicada
-    const vacunacionesConProblemas = await VacunacionLote.countDocuments({
-      $or: [
-        { precioUnitario: { $exists: false } },
-        { precioUnitario: null },
-        { precioUnitario: 0 },
-        { cantidadAplicada: { $exists: false } },
-        { cantidadAplicada: null },
-        { cantidadAplicada: 0 },
-      ]
-    });
-
-    if (vacunacionesConProblemas > 0) {
-      const resultado = await VacunacionLote.updateMany(
-        {
-          $or: [
-            { precioUnitario: { $exists: false } },
-            { precioUnitario: null },
-            { precioUnitario: 0 },
-            { cantidadAplicada: { $exists: false } },
-            { cantidadAplicada: null },
-            { cantidadAplicada: 0 },
-          ]
-        },
+    // Migración 1: Solo rellenar campos que LITERALMENTE no existen en BD
+    // No tocamos registros que tienen 0 (pueden ser datos reales del cliente)
+    const resultado1 = await VacunacionLote.updateMany(
+      {
+        $or: [
+          { precioUnitario: { $exists: false } },
+          { precioUnitario: null },
+          { cantidadAplicada: { $exists: false } },
+          { cantidadAplicada: null },
+        ]
+      },
+      [
         {
           $set: {
-            precioUnitario: 150,
-            cantidadAplicada: 50,
+            precioUnitario: { $cond: [{ $in: ['$precioUnitario', [null, undefined]] }, 0, '$precioUnitario'] },
+            cantidadAplicada: { $cond: [{ $in: ['$cantidadAplicada', [null, undefined]] }, 1, '$cantidadAplicada'] },
           }
         }
-      );
-      console.log(`✅ Reparadas ${resultado.modifiedCount} vacunaciones antiguas`);
-    }
-
-    // Migración 2: Reparar otros consumos sin precioUnitario
-    const otrosConsumosConProblemas = await OtroConsumo.countDocuments({
-      $or: [
-        { precioUnitario: { $exists: false } },
-        { precioUnitario: null },
       ]
-    });
-
-    if (otrosConsumosConProblemas > 0) {
-      const resultado = await OtroConsumo.updateMany(
-        {
-          $or: [
-            { precioUnitario: { $exists: false } },
-            { precioUnitario: null },
-          ]
-        },
-        {
-          $set: {
-            precioUnitario: 100,
-          }
-        }
-      );
-      console.log(`✅ Reparados ${resultado.modifiedCount} otros consumos antiguos`);
+    );
+    if (resultado1.modifiedCount > 0) {
+      console.log(`✅ Vacunaciones sin precio normalizadas: ${resultado1.modifiedCount}`);
     }
 
-    console.log('✅ Migraciones completadas exitosamente');
+    // Migración 2: Otros consumos sin precioUnitario
+    const resultado2 = await OtroConsumo.updateMany(
+      {
+        $or: [
+          { precioUnitario: { $exists: false } },
+          { precioUnitario: null },
+        ]
+      },
+      { $set: { precioUnitario: 0 } }
+    );
+    if (resultado2.modifiedCount > 0) {
+      console.log(`✅ Otros consumos normalizados: ${resultado2.modifiedCount}`);
+    }
+
+    console.log('✅ Migraciones completadas');
   } catch (error) {
     console.error('❌ Error en migraciones:', error);
-    // No lanzamos error para no impedir el inicio del servidor
   }
 }
