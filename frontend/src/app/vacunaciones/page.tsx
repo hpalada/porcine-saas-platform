@@ -34,7 +34,7 @@ export default function VacunacionesPage() {
   const [filterLote, setFilterLote] = useState('');
   const [formData, setFormData] = useState({
     loteId: '', vacuna: '', otraVacuna: '', fecha: new Date().toISOString().split('T')[0],
-    dosis: '', aplicadoPor: '', observaciones: '', proximaFecha: '',
+    dosis: '', aplicadoPor: '', observaciones: '', proximaFecha: '', precioUnitario: '', cantidadAplicada: '',
   });
 
   const { data: vacunaciones = [], mutate } = useSWR('/api/vacunaciones', () => api.vacunaciones.list());
@@ -65,10 +65,12 @@ export default function VacunacionesPage() {
         aplicadoPor: v.aplicadoPor || '',
         observaciones: v.observaciones || '',
         proximaFecha: v.proximaFecha?.split('T')[0] || '',
+        precioUnitario: v.precioUnitario?.toString() || '',
+        cantidadAplicada: v.cantidadAplicada?.toString() || '',
       });
     } else {
       setEditingId(null);
-      setFormData({ loteId: '', vacuna: '', otraVacuna: '', fecha: new Date().toISOString().split('T')[0], dosis: '', aplicadoPor: '', observaciones: '', proximaFecha: '' });
+      setFormData({ loteId: '', vacuna: '', otraVacuna: '', fecha: new Date().toISOString().split('T')[0], dosis: '', aplicadoPor: '', observaciones: '', proximaFecha: '', precioUnitario: '', cantidadAplicada: '' });
     }
     setIsModalOpen(true);
   };
@@ -76,6 +78,12 @@ export default function VacunacionesPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!vacunaFinal) return alert('Especifica el nombre de la vacuna');
+    if (!formData.cantidadAplicada || parseInt(formData.cantidadAplicada) <= 0) {
+      return alert('La cantidad de animales debe ser mayor a 0');
+    }
+    if (!formData.precioUnitario || parseFloat(formData.precioUnitario) < 0) {
+      return alert('El precio unitario es requerido y no puede ser negativo');
+    }
     try {
       const payload = {
         loteId: formData.loteId,
@@ -85,6 +93,8 @@ export default function VacunacionesPage() {
         aplicadoPor: formData.aplicadoPor,
         observaciones: formData.observaciones,
         proximaFecha: formData.proximaFecha || undefined,
+        precioUnitario: parseFloat(formData.precioUnitario),
+        cantidadAplicada: parseInt(formData.cantidadAplicada),
       };
       if (editingId) await api.vacunaciones.update(editingId, payload);
       else await api.vacunaciones.create(payload);
@@ -150,8 +160,9 @@ export default function VacunacionesPage() {
                 <TableRow>
                   <TableHead>Lote</TableHead>
                   <TableHead>Vacuna</TableHead>
+                  <TableHead align="center">Cantidad</TableHead>
+                  <TableHead align="center">Costo Total</TableHead>
                   <TableHead align="center">Fecha</TableHead>
-                  <TableHead>Dosis</TableHead>
                   <TableHead align="center">Próxima</TableHead>
                   <TableHead align="right">Acciones</TableHead>
                 </TableRow>
@@ -172,8 +183,11 @@ export default function VacunacionesPage() {
                         </div>
                         {v.aplicadoPor && <p className="text-xs text-zinc-500 mt-0.5">Por: {v.aplicadoPor}</p>}
                       </TableCell>
+                      <TableCell align="center" className="text-zinc-300 text-sm font-medium">{v.cantidadAplicada || '—'}</TableCell>
+                      <TableCell align="center" className="text-green-400 text-sm font-medium">
+                        {v.precioUnitario && v.cantidadAplicada ? `L. ${(v.precioUnitario * v.cantidadAplicada).toFixed(2)}` : '—'}
+                      </TableCell>
                       <TableCell align="center" className="text-zinc-400 text-sm">{formatDate(v.fecha)}</TableCell>
-                      <TableCell className="text-zinc-300 text-sm">{v.dosis}</TableCell>
                       <TableCell align="center">
                         {v.proximaFecha ? (
                           <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${isUrgent ? 'bg-yellow-900/40 text-yellow-300' : 'bg-zinc-800 text-zinc-400'}`}>
@@ -224,6 +238,11 @@ export default function VacunacionesPage() {
           <div className="grid grid-cols-2 gap-4">
             <Input label="Fecha de aplicación" type="date" value={formData.fecha} onChange={(e) => setFormData({ ...formData, fecha: e.target.value })} required />
             <Input label="Dosis" value={formData.dosis} onChange={(e) => setFormData({ ...formData, dosis: e.target.value })} required />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <Input label="Cantidad de animales vacunados" type="number" min="1" value={formData.cantidadAplicada} onChange={(e) => setFormData({ ...formData, cantidadAplicada: e.target.value })} required />
+            <Input label="Precio unitario por dosis" type="number" min="0" step="0.01" value={formData.precioUnitario} onChange={(e) => setFormData({ ...formData, precioUnitario: e.target.value })} required />
           </div>
 
           <div className="grid grid-cols-2 gap-4">

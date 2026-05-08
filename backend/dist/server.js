@@ -7,6 +7,7 @@ const express_1 = __importDefault(require("express"));
 const cors_1 = __importDefault(require("cors"));
 const dotenv_1 = __importDefault(require("dotenv"));
 const database_1 = require("./config/database");
+const migrations_1 = require("./migrations");
 const api_1 = __importDefault(require("./routes/api"));
 const auth_routes_1 = __importDefault(require("./routes/auth.routes"));
 const superadmin_routes_1 = __importDefault(require("./routes/superadmin.routes"));
@@ -66,6 +67,7 @@ app.use((req, res) => {
 async function start() {
     try {
         await (0, database_1.connectDB)();
+        await (0, migrations_1.runMigrations)();
         app.listen(PORT, () => {
             console.log(`🚀 Server running on http://localhost:${PORT}`);
             console.log(`📊 Environment: ${process.env.NODE_ENV}`);

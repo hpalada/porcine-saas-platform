@@ -51,9 +51,15 @@ exports.vacunacionController = {
             const empresaId = getEmpresaId(req);
             if (!empresaId)
                 return res.status(401).json({ error: 'No autenticado' });
-            const { loteId, vacuna, fecha, dosis, aplicadoPor, observaciones, proximaFecha } = req.body;
-            if (!loteId || !vacuna || !dosis) {
-                return res.status(400).json({ error: 'loteId, vacuna y dosis son requeridos' });
+            const { loteId, vacuna, fecha, dosis, aplicadoPor, observaciones, proximaFecha, precioUnitario, cantidadAplicada } = req.body;
+            if (!loteId || !vacuna || precioUnitario === undefined || cantidadAplicada === undefined) {
+                return res.status(400).json({ error: 'loteId, vacuna, precioUnitario y cantidadAplicada son requeridos' });
+            }
+            if (Number(cantidadAplicada) <= 0) {
+                return res.status(400).json({ error: 'La cantidad aplicada debe ser mayor a 0' });
+            }
+            if (Number(precioUnitario) < 0) {
+                return res.status(400).json({ error: 'El precio unitario no puede ser negativo' });
             }
             // Verify lote ownership
             const lote = await Lote_1.Lote.findOne({ _id: loteId, empresaId });
@@ -68,6 +74,8 @@ exports.vacunacionController = {
                 aplicadoPor,
                 observaciones,
                 proximaFecha: proximaFecha ? new Date(proximaFecha) : undefined,
+                precioUnitario: Number(precioUnitario),
+                cantidadAplicada: Number(cantidadAplicada),
             });
             await registro.save();
             res.status(201).json(registro);
@@ -79,7 +87,7 @@ exports.vacunacionController = {
     async update(req, res) {
         try {
             const empresaId = getEmpresaId(req);
-            const { vacuna, fecha, dosis, aplicadoPor, observaciones, proximaFecha } = req.body;
+            const { vacuna, fecha, dosis, aplicadoPor, observaciones, proximaFecha, precioUnitario, cantidadAplicada } = req.body;
             const updateData = {};
             if (vacuna !== undefined)
                 updateData.vacuna = vacuna;
@@ -93,6 +101,18 @@ exports.vacunacionController = {
                 updateData.observaciones = observaciones;
             if (proximaFecha !== undefined)
                 updateData.proximaFecha = proximaFecha ? new Date(proximaFecha) : null;
+            if (precioUnitario !== undefined) {
+                if (Number(precioUnitario) < 0) {
+                    return res.status(400).json({ error: 'El precio unitario no puede ser negativo' });
+                }
+                updateData.precioUnitario = Number(precioUnitario);
+            }
+            if (cantidadAplicada !== undefined) {
+                if (Number(cantidadAplicada) <= 0) {
+                    return res.status(400).json({ error: 'La cantidad aplicada debe ser mayor a 0' });
+                }
+                updateData.cantidadAplicada = Number(cantidadAplicada);
+            }
             const registro = await VacunacionLote_1.default.findOneAndUpdate({ _id: req.params.id, empresaId }, updateData, { new: true, runValidators: true });
             if (!registro)
                 return res.status(404).json({ error: 'Registro no encontrado' });

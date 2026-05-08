@@ -1,0 +1,1 @@
+{"version":3,"file":"otroConsumo.controller.d.ts","sourceRoot":"","sources":["../../src/controllers/otroConsumo.controller.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,OAAO,EAAE,QAAQ,EAAE,MAAM,SAAS,CAAC;AAO5C,eAAO,MAAM,qBAAqB;eACf,OAAO,OAAO,QAAQ;iBA0BpB,OAAO,OAAO,QAAQ;wBAgBf,OAAO,OAAO,QAAQ;mBAmD3B,OAAO,OAAO,QAAQ;gBA4CzB,OAAO,OAAO,QAAQ;gBAoCtB,OAAO,OAAO,QAAQ;CAgBzC,CAAC"}

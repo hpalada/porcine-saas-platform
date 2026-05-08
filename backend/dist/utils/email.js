@@ -1,15 +1,26 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.sendPinReset = sendPinReset;
 exports.sendWelcomeEmail = sendWelcomeEmail;
-const resend_1 = require("resend");
-function getResend() {
-    return new resend_1.Resend(process.env.RESEND_API_KEY);
+const nodemailer_1 = __importDefault(require("nodemailer"));
+function getTransporter() {
+    return nodemailer_1.default.createTransport({
+        host: process.env.SMTP_HOST || 'smtp.gmail.com',
+        port: Number(process.env.SMTP_PORT) || 587,
+        secure: false,
+        auth: {
+            user: process.env.SMTP_USER,
+            pass: process.env.SMTP_PASS,
+        },
+    });
 }
-const FROM = process.env.EMAIL_FROM || 'Classified Cloud <onboarding@resend.dev>';
+const FROM = `"Classified Cloud" <${process.env.SMTP_USER}>`;
 async function sendPinReset(email, pin, nombre) {
     try {
-        await getResend().emails.send({
+        await getTransporter().sendMail({
             from: FROM,
             to: email,
             subject: 'Código de recuperación de contraseña - Classified Cloud',
@@ -42,11 +53,8 @@ async function sendPinReset(email, pin, nombre) {
             </p>
           </div>
         </div>
-        <div style="text-align: center; padding: 20px; background: #f8f9fa; border-top: 1px solid #e0e0e0; border-radius: 0 0 12px 12px;">
+        <div style="text-align: center; padding: 20px; background: #f8f9fa; border-top: 1px solid #e0e0e0;">
           <p style="margin: 0 0 8px 0; color: #999; font-size: 12px;">© 2026 Classified Cloud. Todos los derechos reservados.</p>
-          <p style="margin: 0; color: #bbb; font-size: 11px;">
-            <a href="https://classified.cloud" style="color: #667eea; text-decoration: none;">classified.cloud</a>
-          </p>
         </div>
       </div>
     `,
@@ -60,37 +68,56 @@ async function sendPinReset(email, pin, nombre) {
 }
 async function sendWelcomeEmail(email, nombre, nombreEmpresa) {
     try {
-        await getResend().emails.send({
+        await getTransporter().sendMail({
             from: FROM,
             to: email,
             subject: `¡Bienvenido a Classified Cloud, ${nombre}!`,
             html: `
       <div style="font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto;">
-        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 40px 20px; text-align: center; border-radius: 12px 12px 0 0;">
-          <h1 style="margin: 0; color: white; font-size: 28px; font-weight: 700;">Classified Cloud</h1>
-          <p style="margin: 8px 0 0 0; color: rgba(255,255,255,0.9); font-size: 14px;">Gestión Empresarial Inteligente</p>
+        <!-- Header -->
+        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 48px 32px; text-align: center; border-radius: 12px 12px 0 0;">
+          <h1 style="margin: 0 0 6px 0; color: white; font-size: 30px; font-weight: 800; letter-spacing: -0.5px;">Classified Cloud</h1>
+          <p style="margin: 0; color: rgba(255,255,255,0.85); font-size: 13px; letter-spacing: 0.5px;">GESTIÓN EMPRESARIAL INTELIGENTE</p>
         </div>
-        <div style="background: #f8f9fa; padding: 40px 30px; border-radius: 0 0 12px 12px;">
-          <p style="margin: 0 0 20px 0; color: #333; font-size: 18px; font-weight: 600;">
-            ¡Bienvenido, ${nombre}! 🎉
+
+        <!-- Body -->
+        <div style="background: #ffffff; padding: 40px 32px;">
+          <p style="margin: 0 0 8px 0; color: #111; font-size: 22px; font-weight: 700;">¡Bienvenido, ${nombre}! 🎉</p>
+          <p style="margin: 0 0 24px 0; color: #555; font-size: 15px; line-height: 1.7;">
+            Tu empresa <strong style="color: #333;">"${nombreEmpresa}"</strong> ha sido registrada exitosamente en Classified Cloud.
+            Ya tienes acceso completo a tu panel de administración.
           </p>
-          <p style="margin: 0 0 16px 0; color: #666; font-size: 15px; line-height: 1.6;">
-            Tu empresa <strong>"${nombreEmpresa}"</strong> ha sido registrada exitosamente en Classified Cloud.
-          </p>
-          <p style="margin: 0 0 24px 0; color: #666; font-size: 15px; line-height: 1.6;">
-            Ya puedes acceder a tu dashboard y empezar a gestionar tu negocio.
-          </p>
-          <div style="text-align: center; margin: 32px 0;">
-            <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/dashboard" style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 14px 32px; border-radius: 6px; text-decoration: none; font-weight: 600; font-size: 15px;">
-              Ir al Dashboard
+
+          <!-- Feature list -->
+          <div style="background: #f8f7ff; border-radius: 10px; padding: 24px 28px; margin: 0 0 28px 0;">
+            <p style="margin: 0 0 16px 0; color: #444; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px;">Lo que puedes hacer desde hoy</p>
+            ${[
+                ['📦', 'Gestiona tu inventario en tiempo real'],
+                ['💰', 'Registra ventas y genera reportes'],
+                ['🧾', 'Emite facturas y tickets de venta'],
+                ['👥', 'Administra clientes y empleados'],
+                ['📊', 'Analiza el rendimiento de tu negocio'],
+            ].map(([icon, text]) => `
+              <div style="display: flex; align-items: center; margin-bottom: 12px;">
+                <span style="font-size: 18px; margin-right: 12px;">${icon}</span>
+                <span style="color: #555; font-size: 14px; line-height: 1.4;">${text}</span>
+              </div>
+            `).join('')}
+          </div>
+
+          <!-- CTA -->
+          <div style="text-align: center; margin: 32px 0 8px 0;">
+            <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}"
+               style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 15px 40px; border-radius: 8px; text-decoration: none; font-weight: 700; font-size: 15px; letter-spacing: 0.3px;">
+              Ir a mi panel →
             </a>
           </div>
         </div>
-        <div style="text-align: center; padding: 20px; background: #f8f9fa; border-top: 1px solid #e0e0e0; border-radius: 0 0 12px 12px;">
-          <p style="margin: 0 0 8px 0; color: #999; font-size: 12px;">© 2026 Classified Cloud. Todos los derechos reservados.</p>
-          <p style="margin: 0; color: #bbb; font-size: 11px;">
-            <a href="https://classified.cloud" style="color: #667eea; text-decoration: none;">classified.cloud</a>
-          </p>
+
+        <!-- Footer -->
+        <div style="background: #f8f9fa; padding: 20px 32px; text-align: center; border-top: 1px solid #eee; border-radius: 0 0 12px 12px;">
+          <p style="margin: 0 0 4px 0; color: #aaa; font-size: 12px;">¿Tienes alguna pregunta? Responde este correo y te ayudamos.</p>
+          <p style="margin: 0; color: #ccc; font-size: 11px;">© 2026 Classified Cloud · theclassified.hn@gmail.com</p>
         </div>
       </div>
     `,
@@ -99,7 +126,7 @@ async function sendWelcomeEmail(email, nombre, nombreEmpresa) {
     }
     catch (error) {
         console.error(`❌ Failed to send welcome email to ${email}:`, error);
-        throw error;
+        // Don't throw — registration should succeed even if email fails
     }
 }
 //# sourceMappingURL=email.js.map
