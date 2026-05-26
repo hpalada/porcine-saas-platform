@@ -72,7 +72,7 @@ export const updateLote = async (req: Request, res: Response) => {
         return res.status(400).json({ error: 'La cantidad de salida no puede superar la cantidad inicial' });
       }
       lote.cantidadSalida = salida;
-      lote.cantidadActual = lote.cantidadInicial - salida;
+      lote.cantidadActual = Math.max(0, lote.cantidadInicial - salida - (lote.cantidadMuertas || 0));
     }
 
     await lote.save();
@@ -104,7 +104,7 @@ export const updateCantidadSalida = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'La cantidad de salida no puede superar la cantidad inicial' });
     }
     lote.cantidadSalida = salida;
-    lote.cantidadActual = lote.cantidadInicial - salida;
+    lote.cantidadActual = Math.max(0, lote.cantidadInicial - salida - (lote.cantidadMuertas || 0));
     await lote.save();
     res.status(200).json({ message: 'Cantidad actualizada exitosamente', lote });
   } catch (error) {
