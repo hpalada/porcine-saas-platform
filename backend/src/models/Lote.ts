@@ -8,6 +8,7 @@ export interface ILote extends Document {
   cantidadInicial: number;
   cantidadActual: number;
   cantidadSalida: number;
+  cantidadMuertas: number;
   estado: 'activo' | 'finalizado';
   descripcion?: string;
   createdAt: Date;
@@ -47,6 +48,11 @@ const loteSchema = new Schema<ILote>(
       min: 0,
     },
     cantidadSalida: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    cantidadMuertas: {
       type: Number,
       default: 0,
       min: 0,

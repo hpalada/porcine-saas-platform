@@ -25,28 +25,36 @@ async function run() {
 
   let updated = 0;
   for (const lote of lotes) {
-    const agg = await db.collection('ventaregistros').aggregate([
-      { $match: { loteId: lote._id } },
-      { $group: { _id: null, totalCerdos: { $sum: '$cantidadCerdos' } } },
-    ]).toArray();
+    const [ventasAgg, mortalidadAgg] = await Promise.all([
+      db.collection('ventaregistros').aggregate([
+        { $match: { loteId: lote._id } },
+        { $group: { _id: null, totalCerdos: { $sum: '$cantidadCerdos' } } },
+      ]).toArray(),
+      db.collection('mortalidadlotes').aggregate([
+        { $match: { loteId: lote._id } },
+        { $group: { _id: null, totalMuertas: { $sum: '$cantidadMuertas' } } },
+      ]).toArray(),
+    ]);
 
-    const totalVendidos = agg[0]?.totalCerdos || 0;
+    const totalVendidos = ventasAgg[0]?.totalCerdos || 0;
+    const totalMuertas = mortalidadAgg[0]?.totalMuertas || 0;
     const cantidadInicial = lote.cantidadInicial || 0;
     const nuevaSalida = Math.min(totalVendidos, cantidadInicial);
-    const nuevaActual = Math.max(0, cantidadInicial - nuevaSalida);
+    const nuevaActual = Math.max(0, cantidadInicial - nuevaSalida - totalMuertas);
     const nuevoEstado = nuevaActual === 0 && cantidadInicial > 0 ? 'finalizado' : (lote.estado || 'activo');
 
     if (
       lote.cantidadSalida !== nuevaSalida ||
+      lote.cantidadMuertas !== totalMuertas ||
       lote.cantidadActual !== nuevaActual ||
       lote.estado !== nuevoEstado
     ) {
       await db.collection('lotes').updateOne(
         { _id: lote._id },
-        { $set: { cantidadSalida: nuevaSalida, cantidadActual: nuevaActual, estado: nuevoEstado } }
+        { $set: { cantidadSalida: nuevaSalida, cantidadMuertas: totalMuertas, cantidadActual: nuevaActual, estado: nuevoEstado } }
       );
       updated++;
-      console.log(`  · Lote "${lote.nombre}": vendidos=${totalVendidos}, salida=${nuevaSalida}, activos=${nuevaActual}, estado=${nuevoEstado}`);
+      console.log(`  · Lote "${lote.nombre}": vendidos=${totalVendidos}, muertas=${totalMuertas}, salida=${nuevaSalida}, activos=${nuevaActual}, estado=${nuevoEstado}`);
     }
   }
 

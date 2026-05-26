@@ -87,9 +87,8 @@ export const ventasController = {
 
       await venta.save();
 
-      // Restar animales vendidos del lote
       lote.cantidadSalida = (lote.cantidadSalida || 0) + cantidad;
-      lote.cantidadActual = Math.max(0, lote.cantidadInicial - lote.cantidadSalida);
+      lote.cantidadActual = Math.max(0, lote.cantidadInicial - lote.cantidadSalida - (lote.cantidadMuertas || 0));
       if (lote.cantidadActual === 0) lote.estado = 'finalizado';
       await lote.save();
 
@@ -121,7 +120,7 @@ export const ventasController = {
               return res.status(400).json({ error: `Solo hay ${lote.cantidadActual} animales activos en el lote` });
             }
             lote.cantidadSalida = (lote.cantidadSalida || 0) + diff;
-            lote.cantidadActual = Math.max(0, lote.cantidadInicial - lote.cantidadSalida);
+            lote.cantidadActual = Math.max(0, lote.cantidadInicial - lote.cantidadSalida - (lote.cantidadMuertas || 0));
             lote.estado = lote.cantidadActual === 0 ? 'finalizado' : 'activo';
             await lote.save();
           }
@@ -162,7 +161,7 @@ export const ventasController = {
       const lote = await Lote.findOne({ _id: venta.loteId, empresaId });
       if (lote) {
         lote.cantidadSalida = Math.max(0, (lote.cantidadSalida || 0) - venta.cantidadCerdos);
-        lote.cantidadActual = Math.max(0, lote.cantidadInicial - lote.cantidadSalida);
+        lote.cantidadActual = Math.max(0, lote.cantidadInicial - lote.cantidadSalida - (lote.cantidadMuertas || 0));
         if (lote.cantidadActual > 0 && lote.estado === 'finalizado') lote.estado = 'activo';
         await lote.save();
       }
