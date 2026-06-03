@@ -1,50 +1,53 @@
 # Porcine SaaS Platform
 
-Full-stack SaaS platform for pig farm management — production tracking, cost control, inventory, and profitability analytics. Built and deployed to production; used daily by real clients.
+Full-stack SaaS for pig farm operations management — batch tracking, feed cost control, inventory, and profitability analytics. Built from scratch and deployed to production; used daily by real clients in Honduras.
 
-## Tech Stack
+## Stack
 
-| Layer | Technology |
-|---|---|
-| Frontend | Next.js 14, React 18, Tailwind CSS, SWR |
-| Backend | Node.js, Express, TypeScript |
-| Database | MongoDB, Mongoose |
-| Auth | JWT with subscription gating |
-| Infra | Docker, Railway |
+**Frontend** — Next.js 14 · React 18 · Tailwind CSS · SWR  
+**Backend** — Node.js · Express · TypeScript  
+**Database** — MongoDB · Mongoose  
+**Auth** — JWT with subscription gating  
+**Infra** — Docker · Railway  
 
 ## Architecture
 
 ```
 ┌─────────────────┐     ┌─────────────────┐     ┌──────────────┐
 │   Frontend      │────▶│   Backend API   │────▶│   MongoDB    │
-│   Next.js 14    │◀────│   Express/TS    │◀────│   Mongoose   │
+│   Next.js 14    │◀────│   Express / TS  │◀────│   Mongoose   │
 │   Tailwind CSS  │     │   JWT Auth      │     │   Atlas      │
 └─────────────────┘     └─────────────────┘     └──────────────┘
 ```
 
-## Key Features
+## Features
 
-- **Batch management** — full lifecycle tracking of pig batches (quantity, dates, status)
-- **Feed cost tracking** — daily consumption with historical price capture (price locked at time of entry)
-- **Inventory control** — stock management with low-inventory alerts; consumption blocked when stock runs out
-- **Expense logging** — categorized additional costs (medicine, transport, labor) per batch
-- **Sales module** — revenue entry with automatic profit calculation
-- **Profitability reports** — per-batch breakdown of costs vs. revenue, margin %, CSV/JSON export
-- **Subscription gating** — multi-tenant architecture; access auto-revoked when subscription lapses
-- **Email notifications** — transactional emails via SMTP for account and billing events
+**Batch management** — full lifecycle per pig batch: quantity, dates, status, from opening to sale.
+
+**Feed cost tracking** — daily consumption logs with price locked at time of entry. Historical records are immutable — retroactive price changes never corrupt past data.
+
+**Inventory control** — stock management with low-inventory alerts. Feed consumption is blocked when stock runs out.
+
+**Expense logging** — categorized costs per batch: medicine, transport, labor, other.
+
+**Sales module** — revenue entry with automatic profit calculation at sale time.
+
+**Profitability reports** — per-batch breakdown of all costs vs. revenue, margin %, CSV/JSON export.
+
+**Subscription gating** — access auto-revoked when a subscription lapses. Free vs. paid plan differentiation enforced at the API layer, not just the frontend.
+
+**Email notifications** — transactional emails via SMTP for account and billing events.
 
 ## Data Model
 
 | Model | Purpose |
 |---|---|
-| `Lote` | Pig batch (count, start date, status) |
+| `Lote` | Pig batch — count, open date, status |
 | `ConcentradoTipo` | Feed type with current price and unit |
 | `ConsumoRegistro` | Daily feed usage with price snapshot |
 | `InventarioMovimiento` | Stock entries, exits, adjustments |
 | `GastoAdicional` | Miscellaneous expenses per batch |
-| `VentaRegistro` | Sale events with weight, price, revenue |
-
-### Profitability Formula
+| `VentaRegistro` | Sale event — weight, price, total revenue |
 
 ```
 Profit = Revenue − (Feed Costs + Additional Expenses)
@@ -64,33 +67,32 @@ porcine-saas/
 │       └── middleware/     # Auth, subscription check
 ├── frontend/
 │   └── src/
-│       ├── app/            # Next.js App Router
+│       ├── app/            # Next.js App Router pages
 │       ├── components/     # UI components
-│       └── lib/            # API client, utils
+│       └── lib/            # API client, utilities
 └── docker-compose.yml
 ```
 
 ## Local Setup
 
 ```bash
-# 1. Backend
+# Backend
 cd backend
-cp .env.example .env      # fill in MongoDB URI and JWT secret
+cp .env.example .env      # fill in MONGO_URI and JWT_SECRET
 npm install
-npm run seed              # optional: seed sample data
 npm run dev               # http://localhost:3001
 
-# 2. Frontend
+# Frontend
 cd frontend
 cp .env.local.example .env.local
 npm install
 npm run dev               # http://localhost:3000
 
-# Or run both with Docker
+# Or both at once
 docker-compose up -d
 ```
 
-## REST API — Core Endpoints
+## Core API Endpoints
 
 ```
 GET  /api/lotes                       List batches
@@ -102,14 +104,17 @@ POST /api/inventario/compra           Record purchase
 
 POST /api/consumos                    Log feed consumption (validates stock)
 
-GET  /api/reportes/rentabilidad/:id   Full profitability report
-GET  /api/reportes/exportar/:id       Export batch data (CSV/JSON)
+GET  /api/reportes/rentabilidad/:id   Profitability report
+GET  /api/reportes/exportar/:id       Export batch data (CSV / JSON)
 ```
 
 ## Highlights
 
-- Deployed and running in production with real clients
-- Designed the relational data model and full REST API from scratch
-- Implemented subscription-based access control that auto-revokes on cancellation
-- Historical price capture ensures cost records are immutable after entry
-- Containerized with Docker for consistent local and cloud deployment on Railway
+- Deployed and running in production with real paying clients
+- Price-locked historical records prevent retroactive cost manipulation
+- Subscription gating enforced at the API layer, not only the UI
+- Containerized with Docker for consistent deployment on Railway
+
+---
+
+Built by Homer Palada — CS student at Universidad Católica de Honduras, graduating May 2027.
