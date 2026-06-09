@@ -83,6 +83,9 @@ export const updateLote = async (req: Request, res: Response) => {
       }
       lote.cantidadSalida = salida;
       lote.cantidadActual = Math.max(0, lote.cantidadInicial - salida - (lote.cantidadMuertas || 0));
+      if (estado === undefined) {
+        lote.estado = lote.cantidadActual === 0 ? 'finalizado' : 'activo';
+      }
     }
 
     await lote.save();
@@ -115,6 +118,7 @@ export const updateCantidadSalida = async (req: Request, res: Response) => {
     }
     lote.cantidadSalida = salida;
     lote.cantidadActual = Math.max(0, lote.cantidadInicial - salida - (lote.cantidadMuertas || 0));
+    lote.estado = lote.cantidadActual === 0 ? 'finalizado' : 'activo';
     await lote.save();
     res.status(200).json({ message: 'Cantidad actualizada exitosamente', lote });
   } catch (error) {

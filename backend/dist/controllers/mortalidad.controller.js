@@ -77,9 +77,11 @@ exports.mortalidadController = {
                 observaciones,
             });
             const nuevasMuertas = (lote.cantidadMuertas || 0) + cantidad;
+            const nuevaActual = Math.max(0, lote.cantidadInicial - (lote.cantidadSalida || 0) - nuevasMuertas);
             await Lote_1.Lote.findByIdAndUpdate(loteId, {
                 cantidadMuertas: nuevasMuertas,
-                cantidadActual: Math.max(0, lote.cantidadInicial - (lote.cantidadSalida || 0) - nuevasMuertas),
+                cantidadActual: nuevaActual,
+                estado: nuevaActual === 0 ? 'finalizado' : 'activo',
             });
             res.status(201).json(mortalidad);
         }
@@ -113,9 +115,11 @@ exports.mortalidadController = {
                 updateData.cantidadMuertas = nuevaCantidad;
                 if (lote) {
                     const nuevasMuertas = Math.max(0, (lote.cantidadMuertas || 0) + diferencia);
+                    const nuevaActual = Math.max(0, lote.cantidadInicial - (lote.cantidadSalida || 0) - nuevasMuertas);
                     await Lote_1.Lote.findByIdAndUpdate(mortalidadAnterior.loteId, {
                         cantidadMuertas: nuevasMuertas,
-                        cantidadActual: Math.max(0, lote.cantidadInicial - (lote.cantidadSalida || 0) - nuevasMuertas),
+                        cantidadActual: nuevaActual,
+                        estado: nuevaActual === 0 ? 'finalizado' : 'activo',
                     });
                 }
             }
@@ -135,9 +139,11 @@ exports.mortalidadController = {
             const loteParaEliminar = await Lote_1.Lote.findById(mortalidad.loteId);
             if (loteParaEliminar) {
                 const nuevasMuertas = Math.max(0, (loteParaEliminar.cantidadMuertas || 0) - mortalidad.cantidadMuertas);
+                const nuevaActual = Math.max(0, loteParaEliminar.cantidadInicial - (loteParaEliminar.cantidadSalida || 0) - nuevasMuertas);
                 await Lote_1.Lote.findByIdAndUpdate(mortalidad.loteId, {
                     cantidadMuertas: nuevasMuertas,
-                    cantidadActual: Math.max(0, loteParaEliminar.cantidadInicial - (loteParaEliminar.cantidadSalida || 0) - nuevasMuertas),
+                    cantidadActual: nuevaActual,
+                    estado: nuevaActual === 0 ? 'finalizado' : 'activo',
                 });
             }
             res.json({ message: 'Mortalidad eliminada correctamente' });
