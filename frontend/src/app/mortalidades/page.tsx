@@ -37,7 +37,8 @@ export default function MortalidadesPage() {
   });
 
   const { data: mortalidades = [], mutate } = useSWR('/api/mortalidades', () => api.mortalidades.list());
-  const { data: lotes = [] } = useSWR('/api/lotes', () => api.lotes.list());
+  const { data: lotes = [], mutate: mutateLotes } = useSWR('/api/lotes', () => api.lotes.list());
+  const lotesActivos = (lotes as any[]).filter((l: any) => l.estado === 'activo');
 
   const motivoFinal = formData.motivo === 'Otro' ? formData.otroMotivo : formData.motivo;
 
@@ -90,6 +91,7 @@ export default function MortalidadesPage() {
       if (editingId) await api.mortalidades.actualizar(editingId, payload);
       else await api.mortalidades.crear(payload);
       mutate();
+      mutateLotes();
       setIsModalOpen(false);
     } catch (error: any) {
       alert(error.message || 'Error al guardar');
@@ -170,6 +172,7 @@ export default function MortalidadesPage() {
                             if (confirm('¿Eliminar este registro? Se revertirán los cambios en la cantidad de animales del lote.')) {
                               await api.mortalidades.eliminar(m._id);
                               mutate();
+                              mutateLotes();
                             }
                           }}
                         >
@@ -194,7 +197,11 @@ export default function MortalidadesPage() {
         <form onSubmit={handleSubmit} className="space-y-4">
           <Select label="Lote" value={formData.loteId} onChange={(e) => setFormData({ ...formData, loteId: e.target.value })} required>
             <option value="">Seleccionar lote...</option>
-            {(lotes as any[]).map((l: any) => <option key={l._id} value={l._id}>{l.nombre}</option>)}
+            {lotesActivos.map((l: any) => (
+              <option key={l._id} value={l._id}>
+                {l.nombre} — {new Date(l.fechaIngreso).toLocaleDateString('es-HN')} ({l.cantidadActual} animales)
+              </option>
+            ))}
           </Select>
 
           <div className="grid grid-cols-2 gap-4">

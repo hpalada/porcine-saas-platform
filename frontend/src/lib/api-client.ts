@@ -145,6 +145,10 @@ export const api = {
     costoAcumulado: (loteId: string) => safeFetch(`${API_BASE}/reportes/costo-acumulado/${loteId}`, { headers: authHeaders() }).then(handleResponse),
     exportar: (loteId: string, formato: 'excel' | 'pdf' = 'excel') =>
       safeFetch(`${API_BASE}/reportes/exportar/${loteId}?formato=${formato}`, { headers: authHeaders() }).then(r => r.blob()),
+    porFecha: (params: { fechaDesde?: string; fechaHasta?: string }) => {
+      const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v) as [string, string][]).toString();
+      return safeFetch(`${API_BASE}/reportes/por-fecha${qs ? '?' + qs : ''}`, { headers: authHeaders() }).then(handleResponse);
+    },
   },
 
   // ============== OTROS CONSUMOS ==============

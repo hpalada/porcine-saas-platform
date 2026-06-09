@@ -75,6 +75,7 @@ router.delete('/ventas/:id', verificarToken, ventasController.delete.bind(ventas
 
 // ============== REPORTES ==============
 router.get('/reportes/dashboard', verificarToken, reportesController.dashboard.bind(reportesController));
+router.get('/reportes/por-fecha', verificarToken, reportesController.porFecha.bind(reportesController));
 router.get('/reportes/rentabilidad/:loteId', verificarToken, reportesController.rentabilidad.bind(reportesController));
 router.get('/reportes/resumen-completo/:loteId', verificarToken, reportesController.resumenCompletoPorLote.bind(reportesController));
 router.get('/reportes/consumo-diario', verificarToken, reportesController.consumoDiario.bind(reportesController));

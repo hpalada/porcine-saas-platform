@@ -38,6 +38,10 @@ export const createLote = async (req: Request, res: Response) => {
     if (!nombre || !fechaIngreso || !cantidadInicial) {
       return res.status(400).json({ error: 'Faltan campos requeridos: nombre, fechaIngreso, cantidadInicial' });
     }
+    const existe = await Lote.findOne({ empresaId, nombre: nombre.trim() });
+    if (existe) {
+      return res.status(400).json({ error: `Ya existe un lote con el nombre "${nombre.trim()}"` });
+    }
     const lote = new Lote({
       empresaId,
       nombre,
@@ -63,7 +67,13 @@ export const updateLote = async (req: Request, res: Response) => {
     const lote = await Lote.findOne({ _id: req.params.id, empresaId });
     if (!lote) return res.status(404).json({ error: 'Lote no encontrado' });
 
-    if (nombre !== undefined) lote.nombre = nombre;
+    if (nombre !== undefined) {
+      const existe = await Lote.findOne({ empresaId, nombre: nombre.trim(), _id: { $ne: lote._id } });
+      if (existe) {
+        return res.status(400).json({ error: `Ya existe un lote con el nombre "${nombre.trim()}"` });
+      }
+      lote.nombre = nombre;
+    }
     if (descripcion !== undefined) lote.descripcion = descripcion;
     if (estado !== undefined) lote.estado = estado;
     if (cantidadSalida !== undefined) {

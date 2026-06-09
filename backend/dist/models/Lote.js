@@ -71,6 +71,11 @@ const loteSchema = new mongoose_1.Schema({
         default: 0,
         min: 0,
     },
+    cantidadMuertas: {
+        type: Number,
+        default: 0,
+        min: 0,
+    },
     estado: {
         type: String,
         enum: ['activo', 'finalizado'],

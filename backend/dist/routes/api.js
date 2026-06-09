@@ -67,6 +67,7 @@ router.put('/ventas/:id', auth_controller_1.verificarToken, ventas_controller_1.
 router.delete('/ventas/:id', auth_controller_1.verificarToken, ventas_controller_1.ventasController.delete.bind(ventas_controller_1.ventasController));
 // ============== REPORTES ==============
 router.get('/reportes/dashboard', auth_controller_1.verificarToken, reportes_controller_1.reportesController.dashboard.bind(reportes_controller_1.reportesController));
+router.get('/reportes/por-fecha', auth_controller_1.verificarToken, reportes_controller_1.reportesController.porFecha.bind(reportes_controller_1.reportesController));
 router.get('/reportes/rentabilidad/:loteId', auth_controller_1.verificarToken, reportes_controller_1.reportesController.rentabilidad.bind(reportes_controller_1.reportesController));
 router.get('/reportes/resumen-completo/:loteId', auth_controller_1.verificarToken, reportes_controller_1.reportesController.resumenCompletoPorLote.bind(reportes_controller_1.reportesController));
 router.get('/reportes/consumo-diario', auth_controller_1.verificarToken, reportes_controller_1.reportesController.consumoDiario.bind(reportes_controller_1.reportesController));

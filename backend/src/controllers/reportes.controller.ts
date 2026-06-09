@@ -879,6 +879,101 @@ export const reportesController = {
     }
   },
 
+  async porFecha(req: Request, res: Response) {
+    try {
+      const empresaId = getEmpresaId(req);
+      if (!empresaId) return res.status(400).json({ error: 'empresaId requerido' });
+      const empresaOid = new mongoose.Types.ObjectId(empresaId as string);
+      const { fechaDesde, fechaHasta } = req.query;
+
+      const dateFilter: Record<string, any> = {};
+      if (fechaDesde) dateFilter.$gte = new Date(fechaDesde as string);
+      if (fechaHasta) {
+        const hasta = new Date(fechaHasta as string);
+        hasta.setHours(23, 59, 59, 999);
+        dateFilter.$lte = hasta;
+      }
+
+      const [ventasRaw, mortalidadesRaw, consumosRaw, gastosRaw] = await Promise.all([
+        VentaRegistro.aggregate([
+          { $match: { empresaId: empresaOid, ...(Object.keys(dateFilter).length ? { fechaVenta: dateFilter } : {}) } },
+          { $group: { _id: '$loteId', total: { $sum: '$ingresoTotal' }, registros: { $sum: 1 }, cerdosVendidos: { $sum: '$cantidadCerdos' } } },
+        ]),
+        MortalidadLote.aggregate([
+          { $match: { empresaId: empresaOid, ...(Object.keys(dateFilter).length ? { fecha: dateFilter } : {}) } },
+          { $group: { _id: '$loteId', total: { $sum: '$cantidadMuertas' }, registros: { $sum: 1 } } },
+        ]),
+        ConsumoRegistro.aggregate([
+          { $match: { empresaId: empresaOid, ...(Object.keys(dateFilter).length ? { fecha: dateFilter } : {}) } },
+          { $group: { _id: '$loteId', total: { $sum: '$costoTotal' }, registros: { $sum: 1 } } },
+        ]),
+        GastoAdicional.aggregate([
+          { $match: { empresaId: empresaOid, ...(Object.keys(dateFilter).length ? { fecha: dateFilter } : {}) } },
+          { $group: { _id: '$loteId', total: { $sum: '$monto' }, registros: { $sum: 1 } } },
+        ]),
+      ]);
+
+      const loteIds = [...new Set([
+        ...ventasRaw.map((v: any) => v._id?.toString()),
+        ...mortalidadesRaw.map((m: any) => m._id?.toString()),
+        ...consumosRaw.map((c: any) => c._id?.toString()),
+        ...gastosRaw.map((g: any) => g._id?.toString()),
+      ].filter(Boolean))];
+
+      const lotes = await Lote.find({ _id: { $in: loteIds }, empresaId }).lean();
+
+      const toMap = (arr: any[]) => new Map(arr.map((r: any) => [r._id?.toString(), r]));
+      const vMap = toMap(ventasRaw);
+      const mMap = toMap(mortalidadesRaw);
+      const cMap = toMap(consumosRaw);
+      const gMap = toMap(gastosRaw);
+
+      const lotesData = lotes.map((lote: any) => {
+        const id = lote._id.toString();
+        const ventas = vMap.get(id) || { total: 0, registros: 0, cerdosVendidos: 0 };
+        const mort = mMap.get(id) || { total: 0, registros: 0 };
+        const cons = cMap.get(id) || { total: 0, registros: 0 };
+        const gast = gMap.get(id) || { total: 0, registros: 0 };
+        const costosTotales = Math.round((cons.total + gast.total) * 100) / 100;
+        const utilidad = Math.round((ventas.total - costosTotales) * 100) / 100;
+        return {
+          lote: {
+            _id: lote._id,
+            nombre: lote.nombre,
+            estado: lote.estado,
+            fechaIngreso: lote.fechaIngreso,
+            cantidadInicial: lote.cantidadInicial,
+            cantidadActual: lote.cantidadActual,
+          },
+          ventas: { total: Math.round(ventas.total * 100) / 100, registros: ventas.registros, cerdosVendidos: ventas.cerdosVendidos },
+          mortalidades: { total: mort.total, registros: mort.registros },
+          consumos: { total: Math.round(cons.total * 100) / 100, registros: cons.registros },
+          gastos: { total: Math.round(gast.total * 100) / 100, registros: gast.registros },
+          costosTotales,
+          utilidad,
+        };
+      }).sort((a: any, b: any) => a.lote.nombre.localeCompare(b.lote.nombre));
+
+      const totales = lotesData.reduce((acc: any, l: any) => ({
+        ingresos: Math.round((acc.ingresos + l.ventas.total) * 100) / 100,
+        costos: Math.round((acc.costos + l.costosTotales) * 100) / 100,
+        utilidad: Math.round((acc.utilidad + l.utilidad) * 100) / 100,
+        mortalidades: acc.mortalidades + l.mortalidades.total,
+      }), { ingresos: 0, costos: 0, utilidad: 0, mortalidades: 0 });
+
+      res.json({
+        periodo: {
+          desde: fechaDesde || null,
+          hasta: fechaHasta || null,
+        },
+        totales,
+        lotes: lotesData,
+      });
+    } catch (error) {
+      res.status(500).json({ error: 'Error al obtener reporte por fecha', message: error instanceof Error ? error.message : undefined });
+    }
+  },
+
   async resumenCompletoPorLote(req: Request, res: Response) {
     try {
       const empresaId = getEmpresaId(req);
