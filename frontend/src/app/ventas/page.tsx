@@ -25,7 +25,8 @@ export default function VentasPage() {
   });
 
   const { data: ventas = [], mutate } = useSWR('/api/ventas', () => api.ventas.list());
-  const { data: lotes = [] } = useSWR('/api/lotes', () => api.lotes.list());
+  const { data: lotes = [], mutate: mutateLotes } = useSWR('/api/lotes', () => api.lotes.list());
+  const lotesActivos = (lotes as any[]).filter((l: any) => l.estado === 'activo');
 
   const pesoTotal = parseFloat(formData.pesoTotal) || 0;
   const precio = parseFloat(formData.precio) || 0;
@@ -53,6 +54,7 @@ export default function VentasPage() {
         comprador: formData.comprador,
       });
       mutate();
+      mutateLotes();
       setIsModalOpen(false);
       resetForm();
     } catch (error: any) {
@@ -138,7 +140,11 @@ export default function VentasPage() {
         <form onSubmit={handleSubmit} className="space-y-4">
           <Select label="Lote" value={formData.loteId} onChange={(e) => setFormData({ ...formData, loteId: e.target.value })} required>
             <option value="">Seleccionar lote...</option>
-            {(lotes as any[]).map((l: any) => <option key={l._id} value={l._id}>{l.nombre}</option>)}
+            {lotesActivos.map((l: any) => (
+              <option key={l._id} value={l._id}>
+                {l.nombre} — {new Date(l.fechaIngreso).toLocaleDateString('es-HN')} ({l.cantidadActual} animales)
+              </option>
+            ))}
           </Select>
 
           {/* Unidad de peso */}

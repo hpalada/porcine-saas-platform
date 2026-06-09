@@ -76,7 +76,11 @@ exports.mortalidadController = {
                 motivo,
                 observaciones,
             });
-            await Lote_1.Lote.findByIdAndUpdate(loteId, { $inc: { cantidadActual: -cantidad } });
+            const nuevasMuertas = (lote.cantidadMuertas || 0) + cantidad;
+            await Lote_1.Lote.findByIdAndUpdate(loteId, {
+                cantidadMuertas: nuevasMuertas,
+                cantidadActual: Math.max(0, lote.cantidadInicial - (lote.cantidadSalida || 0) - nuevasMuertas),
+            });
             res.status(201).json(mortalidad);
         }
         catch (error) {
@@ -107,7 +111,13 @@ exports.mortalidadController = {
                     return res.status(400).json({ error: `No hay suficientes animales vivos. Disponibles: ${lote.cantidadActual}` });
                 }
                 updateData.cantidadMuertas = nuevaCantidad;
-                await Lote_1.Lote.findByIdAndUpdate(mortalidadAnterior.loteId, { $inc: { cantidadActual: -diferencia } });
+                if (lote) {
+                    const nuevasMuertas = Math.max(0, (lote.cantidadMuertas || 0) + diferencia);
+                    await Lote_1.Lote.findByIdAndUpdate(mortalidadAnterior.loteId, {
+                        cantidadMuertas: nuevasMuertas,
+                        cantidadActual: Math.max(0, lote.cantidadInicial - (lote.cantidadSalida || 0) - nuevasMuertas),
+                    });
+                }
             }
             const mortalidad = await MortalidadLote_1.default.findByIdAndUpdate(req.params.id, updateData, { new: true, runValidators: true });
             res.json(mortalidad);
@@ -122,7 +132,14 @@ exports.mortalidadController = {
             const mortalidad = await MortalidadLote_1.default.findOneAndDelete({ _id: req.params.id, empresaId });
             if (!mortalidad)
                 return res.status(404).json({ error: 'Mortalidad no encontrada' });
-            await Lote_1.Lote.findByIdAndUpdate(mortalidad.loteId, { $inc: { cantidadActual: mortalidad.cantidadMuertas } });
+            const loteParaEliminar = await Lote_1.Lote.findById(mortalidad.loteId);
+            if (loteParaEliminar) {
+                const nuevasMuertas = Math.max(0, (loteParaEliminar.cantidadMuertas || 0) - mortalidad.cantidadMuertas);
+                await Lote_1.Lote.findByIdAndUpdate(mortalidad.loteId, {
+                    cantidadMuertas: nuevasMuertas,
+                    cantidadActual: Math.max(0, loteParaEliminar.cantidadInicial - (loteParaEliminar.cantidadSalida || 0) - nuevasMuertas),
+                });
+            }
             res.json({ message: 'Mortalidad eliminada correctamente' });
         }
         catch (error) {

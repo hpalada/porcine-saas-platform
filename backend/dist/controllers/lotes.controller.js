@@ -45,6 +45,10 @@ const createLote = async (req, res) => {
         if (!nombre || !fechaIngreso || !cantidadInicial) {
             return res.status(400).json({ error: 'Faltan campos requeridos: nombre, fechaIngreso, cantidadInicial' });
         }
+        const existe = await Lote_1.Lote.findOne({ empresaId, nombre: nombre.trim() });
+        if (existe) {
+            return res.status(400).json({ error: `Ya existe un lote con el nombre "${nombre.trim()}"` });
+        }
         const lote = new Lote_1.Lote({
             empresaId,
             nombre,
@@ -71,8 +75,13 @@ const updateLote = async (req, res) => {
         const lote = await Lote_1.Lote.findOne({ _id: req.params.id, empresaId });
         if (!lote)
             return res.status(404).json({ error: 'Lote no encontrado' });
-        if (nombre !== undefined)
+        if (nombre !== undefined) {
+            const existe = await Lote_1.Lote.findOne({ empresaId, nombre: nombre.trim(), _id: { $ne: lote._id } });
+            if (existe) {
+                return res.status(400).json({ error: `Ya existe un lote con el nombre "${nombre.trim()}"` });
+            }
             lote.nombre = nombre;
+        }
         if (descripcion !== undefined)
             lote.descripcion = descripcion;
         if (estado !== undefined)
@@ -83,7 +92,7 @@ const updateLote = async (req, res) => {
                 return res.status(400).json({ error: 'La cantidad de salida no puede superar la cantidad inicial' });
             }
             lote.cantidadSalida = salida;
-            lote.cantidadActual = lote.cantidadInicial - salida;
+            lote.cantidadActual = Math.max(0, lote.cantidadInicial - salida - (lote.cantidadMuertas || 0));
         }
         await lote.save();
         res.status(200).json({ message: 'Lote actualizado exitosamente', lote });
@@ -118,7 +127,7 @@ const updateCantidadSalida = async (req, res) => {
             return res.status(400).json({ error: 'La cantidad de salida no puede superar la cantidad inicial' });
         }
         lote.cantidadSalida = salida;
-        lote.cantidadActual = lote.cantidadInicial - salida;
+        lote.cantidadActual = Math.max(0, lote.cantidadInicial - salida - (lote.cantidadMuertas || 0));
         await lote.save();
         res.status(200).json({ message: 'Cantidad actualizada exitosamente', lote });
     }

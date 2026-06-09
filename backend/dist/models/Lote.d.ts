@@ -7,6 +7,7 @@ export interface ILote extends Document {
     cantidadInicial: number;
     cantidadActual: number;
     cantidadSalida: number;
+    cantidadMuertas: number;
     estado: 'activo' | 'finalizado';
     descripcion?: string;
     createdAt: Date;
