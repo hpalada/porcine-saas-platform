@@ -56,9 +56,11 @@ export const vacunacionController = {
         return res.status(400).json({ error: 'El precio unitario no puede ser negativo' });
       }
 
-      // Verify lote ownership
       const lote = await Lote.findOne({ _id: loteId, empresaId });
       if (!lote) return res.status(404).json({ error: 'Lote no encontrado' });
+      if (lote.estado !== 'activo') {
+        return res.status(400).json({ error: 'El lote debe estar activo para registrar vacunaciones' });
+      }
 
       const registro = new VacunacionLote({
         empresaId,

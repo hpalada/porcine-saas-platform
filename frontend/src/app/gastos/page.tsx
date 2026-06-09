@@ -43,6 +43,7 @@ export default function GastosPage() {
 
   const { data: gastos = [], mutate } = useSWR('/api/gastos', () => api.gastos.list());
   const { data: lotes = [] } = useSWR('/api/lotes', () => api.lotes.list());
+  const lotesActivos = (lotes as any[]).filter((l: any) => l.estado === 'activo');
 
   const totalGastos = (gastos as any[]).reduce((a: number, g: any) => a + g.monto, 0);
 
@@ -137,7 +138,11 @@ export default function GastosPage() {
         <form onSubmit={handleSubmit} className="space-y-4">
           <Select label="Lote (opcional)" value={formData.loteId} onChange={(e) => setFormData({ ...formData, loteId: e.target.value })}>
             <option value="">Gasto general (sin lote)</option>
-            {(lotes as any[]).map((l: any) => <option key={l._id} value={l._id}>{l.nombre}</option>)}
+            {lotesActivos.map((l: any) => (
+              <option key={l._id} value={l._id}>
+                {l.nombre} — {new Date(l.fechaIngreso).toLocaleDateString('es-HN')}
+              </option>
+            ))}
           </Select>
           <Select label="Categoría" value={formData.categoria} onChange={(e) => setFormData({ ...formData, categoria: e.target.value })} required>
             {CATEGORIAS.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}

@@ -119,7 +119,7 @@ export default function VentasPage() {
                     <TableCell align="center" className="text-zinc-300 text-sm">{displayPeso(venta)}</TableCell>
                     <TableCell align="right" className="text-green-400 font-medium">{formatCurrency(venta.ingresoTotal)}</TableCell>
                     <TableCell align="right">
-                      <Button variant="ghost" size="sm" onClick={async () => { if (confirm('¿Eliminar venta?')) { await api.ventas.delete(venta._id); mutate(); } }}>
+                      <Button variant="ghost" size="sm" onClick={async () => { if (confirm('¿Eliminar venta?')) { await api.ventas.delete(venta._id); mutate(); mutateLotes(); } }}>
                         <IconTrash size={13} className="text-zinc-500 hover:text-red-400" />
                       </Button>
                     </TableCell>

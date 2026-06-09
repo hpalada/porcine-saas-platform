@@ -39,6 +39,7 @@ export default function VacunacionesPage() {
 
   const { data: vacunaciones = [], mutate } = useSWR('/api/vacunaciones', () => api.vacunaciones.list());
   const { data: lotes = [] } = useSWR('/api/lotes', () => api.lotes.list());
+  const lotesActivos = (lotes as any[]).filter((l: any) => l.estado === 'activo');
 
   const vacunaFinal = formData.vacuna === 'Otra' ? formData.otraVacuna : formData.vacuna;
 
@@ -223,7 +224,11 @@ export default function VacunacionesPage() {
         <form onSubmit={handleSubmit} className="space-y-4">
           <Select label="Lote" value={formData.loteId} onChange={(e) => setFormData({ ...formData, loteId: e.target.value })} required>
             <option value="">Seleccionar lote...</option>
-            {(lotes as any[]).map((l: any) => <option key={l._id} value={l._id}>{l.nombre}</option>)}
+            {lotesActivos.map((l: any) => (
+              <option key={l._id} value={l._id}>
+                {l.nombre} — {new Date(l.fechaIngreso).toLocaleDateString('es-HN')} ({l.cantidadActual} animales)
+              </option>
+            ))}
           </Select>
 
           <Select label="Vacuna" value={formData.vacuna} onChange={(e) => setFormData({ ...formData, vacuna: e.target.value })} required>
