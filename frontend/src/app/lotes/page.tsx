@@ -133,7 +133,7 @@ export default function LotesPage() {
       } else {
         await api.lotes.create(data);
       }
-      mutate();
+      await mutate();
       setIsModalOpen(false);
     } catch (error: any) {
       alert(error.message || 'Error al guardar lote');

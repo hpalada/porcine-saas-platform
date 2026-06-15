@@ -71,34 +71,40 @@ exports.createLote = createLote;
 const updateLote = async (req, res) => {
     try {
         const empresaId = getEmpresaId(req);
-        const { nombre, descripcion, estado, cantidadSalida } = req.body;
+        const { nombre, descripcion, estado, cantidadSalida, fechaIngreso, horaIngreso } = req.body;
         const lote = await Lote_1.Lote.findOne({ _id: req.params.id, empresaId });
         if (!lote)
             return res.status(404).json({ error: 'Lote no encontrado' });
+        const fields = {};
         if (nombre !== undefined) {
-            const existe = await Lote_1.Lote.findOne({ empresaId, nombre: nombre.trim(), _id: { $ne: lote._id } });
+            const trimmed = nombre.trim();
+            const existe = await Lote_1.Lote.findOne({ empresaId, nombre: trimmed, _id: { $ne: lote._id } });
             if (existe) {
-                return res.status(400).json({ error: `Ya existe un lote con el nombre "${nombre.trim()}"` });
+                return res.status(400).json({ error: `Ya existe un lote con el nombre "${trimmed}"` });
             }
-            lote.nombre = nombre;
+            fields.nombre = trimmed;
         }
         if (descripcion !== undefined)
-            lote.descripcion = descripcion;
+            fields.descripcion = descripcion;
         if (estado !== undefined)
-            lote.estado = estado;
+            fields.estado = estado;
+        if (fechaIngreso !== undefined)
+            fields.fechaIngreso = new Date(fechaIngreso);
+        if (horaIngreso !== undefined)
+            fields.horaIngreso = horaIngreso;
         if (cantidadSalida !== undefined) {
             const salida = Number(cantidadSalida);
             if (salida > lote.cantidadInicial) {
                 return res.status(400).json({ error: 'La cantidad de salida no puede superar la cantidad inicial' });
             }
-            lote.cantidadSalida = salida;
-            lote.cantidadActual = Math.max(0, lote.cantidadInicial - salida - (lote.cantidadMuertas || 0));
+            fields.cantidadSalida = salida;
+            fields.cantidadActual = Math.max(0, lote.cantidadInicial - salida - (lote.cantidadMuertas || 0));
             if (estado === undefined) {
-                lote.estado = lote.cantidadActual === 0 ? 'finalizado' : 'activo';
+                fields.estado = fields.cantidadActual === 0 ? 'finalizado' : 'activo';
             }
         }
-        await lote.save();
-        res.status(200).json({ message: 'Lote actualizado exitosamente', lote });
+        const updated = await Lote_1.Lote.findOneAndUpdate({ _id: req.params.id, empresaId }, { $set: fields }, { new: true });
+        res.status(200).json({ message: 'Lote actualizado exitosamente', lote: updated });
     }
     catch (error) {
         res.status(500).json({ error: 'Error al actualizar el lote' });
